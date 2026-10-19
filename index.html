@@ -629,36 +629,50 @@ function playChing(t, open) {
   else { partial(bus, 2730, 0.6, 0.06, t); noiseHit(bus, t, 6000, 0.8, 0.9, 0.05); }
 }
 
-// Placeholder melody in the Thai pentatonic, written as scale steps.
-// -1 = a held note, played as a กรอ (roll) on the last note.
-const P = [0, 1, 2, 4, 5, 7, 8, 9, 11, 12];
-const PHRASES = [
-  [4, 3, 2, 1, 2, 3, 4, 6, 5, 4, 3, 4, 5, 6, 7, 6, 5, 4, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 5, 4, 3, -1],
-  [6, 5, 4, 5, 6, 7, 6, 5, 4, 3, 2, 3, 4, 5, 4, 3, 2, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, 1, 0, -1, 0, -1],
-  [2, 3, 4, 6, 5, 4, 3, 2, 3, 4, 5, 7, 6, 5, 4, 3, 4, 5, 6, 8, 7, 6, 5, 4, 5, 6, 7, 9, 8, 7, 6, -1],
-  [8, 7, 6, 5, 6, 7, 8, 7, 6, 5, 4, 3, 4, 5, 6, 5, 4, 3, 2, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, -1, 2, -1],
-];
+// ⚠ ร่าง: ทำนองแนวสาธุการ เขียนจากความจำ ยังไม่ได้ตรวจกับโน้ตจริง ต้องให้สาขาดนตรีไทยตรวจ/แทนที่
+// Written in Thai notation so it can be edited directly: one token per step, 4 steps per ห้อง.
+//   ด ร ม ฟ ซ ล ท = the 7 notes, ' after a note = the upper octave, - = rest, ~ = กรอ (roll) on the previous note
+//   | is only a visual ห้อง separator. Each line is one phrase; the phrases play in order and loop.
+const SATHUKAN = `
+- ล - ซ  - ม - ซ  - ด' - ล  - ซ - ล  | - ร' - ด'  - ล - ด'  - ม' - ร'  - ด' - ร'
+- ซ' - ม'  - ร' - ด'  - ร' - ด'  - ล - ซ  | - ล - ซ  - ม - ร  - ม - ซ  - ล - ซ
+- - - ม  - - - ซ  - ล - ด'  - ร' - ด'  | - ล - ซ  - ม - ซ  - ล - ด'  - ล - ซ
+- ม - ร  - ด - ร  - ม - ซ  - ล - ซ  | - ม' - ร'  - ด' - ล  - ซ - ล  - ด' - ร'
+- ม' - ซ'  - ม' - ร'  - ด' - ร'  - ม' - ร'  | - ด' - ล  - ซ - ล  - ด' - ร'  - ด' - ล
+- ซ - ม  - ร - ม  - ซ - ล  - ด' - ล  | - ซ - ม  - ร - ด  - ร - ม  - ~ - ซ
+`;
+const NOTE = { 'ด': 0, 'ร': 1, 'ม': 2, 'ฟ': 3, 'ซ': 4, 'ล': 5, 'ท': 6 };
+// each step: a key index, null for a rest, or -1 for a กรอ
+const PHRASES = SATHUKAN.trim().split('\n').map(line => line.split(/\s+/).filter(t => t && t !== '|').map(t => {
+  if (t === '-') return null;
+  if (t === '~') return -1;
+  if (!(t[0] in NOTE)) throw new Error(`โน้ตไม่ถูกต้อง: ${t}`);
+  return NOTE[t[0]] + (t.endsWith("'") ? 7 : 0);
+}));
 let nextT = 0, step = 0, phraseIdx = 0, posInPhrase = 0, lastKey = 4, buildTick = 0;
 const events = [];
 
 function stepDur() {
-  if (state === 'build') return mode === 'guide' ? lerp(0.6, 0.45, smooth(builtCount / N)) : lerp(0.44, 0.21, smooth(builtCount / N));
-  if (state === 'complete') return 0.21;
-  if (state === 'dissolve') return 0.27;
-  return 0.4;
+  // notes fall on every other step, so a note sounds every 2 steps
+  if (state === 'build') return mode === 'guide' ? lerp(0.3, 0.23, smooth(builtCount / N)) : lerp(0.24, 0.13, smooth(builtCount / N));
+  if (state === 'complete') return 0.13;
+  if (state === 'dissolve') return 0.16;
+  return 0.22;
 }
 function scheduleStep(t) {
   const n = PHRASES[phraseIdx][posInPhrase], d = stepDur();
   const soft = mode === 'guide' && state === 'build';
-  if (n >= 0) {
-    const k = P[n]; lastKey = k;
+  if (n === null) {
+    // rest: only ฉิ่ง and ฆ้อง keep time
+  } else if (n >= 0) {
+    const k = n; lastKey = k;
     if (soft) {
       // every melody note gets a guide; the teacher plays it softly underneath
       playRanat(k, t, 0.3); events.push({ t, type: 'note', key: k, soft });
       addGuide(k, t);
     } else {
       playRanat(k, t, 1); events.push({ t, type: 'note', key: k, build: true });
-      if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
+      if (step % 4 === 3 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
     }
   } else {
     if (soft) addGuide(lastKey, t); // the roll's held note is struck once
