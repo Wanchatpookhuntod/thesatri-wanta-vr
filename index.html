@@ -602,6 +602,90 @@ function updateCity() {
     if (e > 0 && !b.shown) { b.shown = true; burst(b.g.position.clone().setY(-1.25), Math.min(10, 3 + b.h * 0.4)); }
     if (e === 0) b.shown = false;
   }
+  updateNature();
+}
+
+// --- หญ้าและต้นไม้: grass spreads out from the hall with the dawn and trees grow after it
+const grassTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#3f6b2a'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) {
+    const l = 22 + Math.random() * 26, x = Math.random() * w, y = Math.random() * h;
+    g.strokeStyle = `hsla(${88 + Math.random() * 28}, ${35 + Math.random() * 25}%, ${l}%, .8)`;
+    g.lineWidth = 1 + Math.random(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - .5) * 3, y - 3 - Math.random() * 5); g.stroke();
+  }
+});
+grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping; grassTex.repeat.set(70, 70);
+const grassReveal = { value: 0 };
+const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95 });
+grassMat.onBeforeCompile = sh => {
+  sh.uniforms.uReveal = grassReveal;
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vGW;')
+    .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvGW = (modelMatrix * vec4(transformed, 1.)).xz;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uReveal; varying vec2 vGW;')
+    .replace('#include <dithering_fragment>', '#include <dithering_fragment>\nfloat gd = uReveal - length(vGW); if (gd < 0.) discard;\ngl_FragColor.rgb += vec3(1., .75, .35) * smoothstep(3., 0., gd) * .6;');
+};
+const grass = new THREE.Mesh(new THREE.CircleGeometry(168, 96), grassMat);
+grass.rotation.x = -Math.PI / 2; grass.position.y = -1.24; grass.visible = false;
+scene.add(grass);
+
+// grass tufts near the hall, and trees out among the buildings, as instanced meshes
+const tuftGeo = mergeGeometries([0, 1, 2, 3, 4].map(i => new THREE.ConeGeometry(0.035, 0.3 + (i % 3) * 0.08, 3).translate(0, 0.17, 0)
+  .rotateZ((i - 2) * 0.22).rotateY(i * 1.3).translate(Math.cos(i * 2.4) * 0.05, 0, Math.sin(i * 2.4) * 0.05).toNonIndexed()));
+const TUFTS = 2400;
+const tufts = new THREE.InstancedMesh(tuftGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), TUFTS);
+const trunkMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0x4a3222, roughness: 0.9 }), 90);
+const crownMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true }), 90);
+[tufts, trunkMesh, crownMesh].forEach(m => { m.frustumCulled = false; m.visible = false; scene.add(m); });
+const tuftData = [], trees = [];
+{
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const onHall = (x, z, pad) => Math.abs(x) < 10 + pad && Math.abs(z) < 16 + pad;
+  const c = new THREE.Color();
+  while (tuftData.length < TUFTS) {
+    const r = 11 + Math.pow(rnd(), 0.7) * 40, a = rnd() * Math.PI * 2, x = Math.sin(a) * r, z = Math.cos(a) * r;
+    if (onHall(x, z, 0.5)) continue;
+    tufts.setColorAt(tuftData.length, c.setHSL(0.22 + rnd() * 0.08, 0.45 + rnd() * 0.2, 0.22 + rnd() * 0.16));
+    tuftData.push({ x, z, r: Math.hypot(x, z), s: 0.7 + rnd() * 0.8, ry: rnd() * 6.3 });
+  }
+  while (trees.length < 90) {
+    const r = 20 + Math.pow(rnd(), 0.8) * 110, a = rnd() * Math.PI * 2, x = Math.sin(a) * r, z = Math.cos(a) * r;
+    // keep the view down the hall's long axis clear, both ways
+    if (onHall(x, z, 4) || Math.abs(x) < 12 || buildings.some(b => Math.hypot(b.g.position.x - x, b.g.position.z - z) < 9)) continue;
+    const i = trees.length, h = 3 + rnd() * 5;
+    crownMesh.setColorAt(i, c.setHSL(0.25 + rnd() * 0.09, 0.55 + rnd() * 0.25, 0.13 + rnd() * 0.1));
+    trees.push({ x, z, h, w: h * (0.45 + rnd() * 0.25), tall: rnd() < 0.3, delay: 2 + (r - 20) * 0.045 + rnd() * 0.8 });
+  }
+}
+const nm = new THREE.Matrix4(), nq = new THREE.Quaternion(), ns = new V3(), np = new V3(), UP = new V3(0, 1, 0);
+let lastReveal = -1, lastTreeClock = -1;
+function updateNature() {
+  const reveal = easeOutCubic(clamp01((cityClock - 0.5) / 7)) * 172;
+  grassReveal.value = reveal;
+  grass.visible = tufts.visible = reveal > 0;
+  if (Math.abs(reveal - lastReveal) > 0.05) {
+    lastReveal = reveal;
+    tuftData.forEach((t, i) => {
+      const e = clamp01((reveal - t.r) / 4);
+      nm.compose(np.set(t.x, -1.24, t.z), nq.setFromAxisAngle(UP, t.ry), ns.setScalar(Math.max(1e-3, e * t.s)));
+      tufts.setMatrixAt(i, nm);
+    });
+    tufts.instanceMatrix.needsUpdate = true;
+  }
+  const treesUp = cityClock > 2;
+  trunkMesh.visible = crownMesh.visible = treesUp;
+  if (treesUp !== (lastTreeClock > 2) || (treesUp && cityClock < 12) || (!treesUp && lastTreeClock > 0)) {
+    trees.forEach((t, i) => {
+      const e = Math.max(1e-3, easeOutBack(clamp01((cityClock - t.delay) / 2)));
+      const th = t.h * (t.tall ? 0.75 : 0.45) * e;
+      nm.compose(np.set(t.x, -1.24, t.z), nq.identity(), ns.set(0.18 * t.h * 0.1 * e + 0.05, th, 0.18 * t.h * 0.1 * e + 0.05));
+      trunkMesh.setMatrixAt(i, nm);
+      nm.compose(np.set(t.x, -1.24 + th + t.w * 0.55 * e, t.z), nq.setFromAxisAngle(UP, i), ns.set(t.w * e, t.w * (t.tall ? 1.5 : 0.85) * e, t.w * e));
+      crownMesh.setMatrixAt(i, nm);
+    });
+    trunkMesh.instanceMatrix.needsUpdate = crownMesh.instanceMatrix.needsUpdate = true;
+  }
+  lastTreeClock = cityClock;
 }
 
 /* =====================================================================
