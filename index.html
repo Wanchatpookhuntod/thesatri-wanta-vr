@@ -798,6 +798,7 @@ function playRanat(i, t = ac.currentTime, vel = 1) {
   partial(bus, f * 2.76, 0.32, 0.22, t);
   partial(bus, f * 5.4, 0.12, 0.08, t);
   noiseHit(bus, t, 2600, 1.2, 0.35, 0.025);
+  return bus;
 }
 function playGong(i, t) {
   const f = keyFreq(i) / 2, bus = ac.createGain(); bus.gain.value = 0.22; out(bus, 1, 1.1);
@@ -833,7 +834,7 @@ let nextT = 0, step = 0, phraseIdx = 0, posInPhrase = 0, lastKey = 4, buildTick 
 const events = [];
 
 function stepDur() {
-  if (state === 'build') return mode === 'guide' ? lerp(0.6, 0.45, smooth(builtCount / N)) : lerp(0.44, 0.21, smooth(builtCount / N));
+  if (state === 'build') return mode === 'guide' ? lerp(0.44, 0.36, smooth(builtCount / N)) : lerp(0.44, 0.21, smooth(builtCount / N));
   if (state === 'complete') return 0.21;
   if (state === 'dissolve') return 0.27;
   return 0.4;
@@ -846,18 +847,19 @@ function scheduleStep(t) {
   } else if (n >= 0) {
     const k = n; lastKey = k;
     if (soft) {
-      // every melody note gets a guide; the teacher plays it softly underneath
-      playRanat(k, t, 0.3); events.push({ t, type: 'note', key: k, soft });
-      addGuide(k, t);
+      // every melody note gets a guide. The teacher's note is scheduled in full, as in watch mode, and is
+      // silenced if the player strikes the key before the beat (see strike())
+      events.push({ t, type: 'note', key: k, soft });
+      addGuide(k, t, playRanat(k, t, 1));
     } else {
       playRanat(k, t, 1); events.push({ t, type: 'note', key: k, build: true });
-      if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
     }
+    if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7, soft }); }
   } else {
-    if (soft) addGuide(lastKey, t); // the roll's held note is struck once
-    for (let r = 0; r < 4; r++) {
+    if (soft) addGuide(lastKey, t, playRanat(lastKey, t, 0.45)); // the roll's first stroke is the player's
+    for (let r = soft ? 1 : 0; r < 4; r++) {
       const tt = t + (r * d) / 4, kk = r % 2 ? Math.min(KEYS - 1, lastKey + 7) : lastKey;
-      playRanat(kk, tt, soft ? 0.3 : 0.45); events.push({ t: tt, type: 'note', key: kk, soft });
+      playRanat(kk, tt, 0.45); events.push({ t: tt, type: 'note', key: kk, soft });
     }
   }
   if (step % 2 === 0) playChing(t, (step / 2) % 2 === 0);
@@ -881,10 +883,10 @@ const APPROACH = 1.6, HIT_WIN = 0.2, PERFECT_WIN = 0.08, DROP = 0.45;
 const GUIDE_COLORS = [0xff4a3d, 0xffe14a, 0xff6fb5, 0x4cff7a, 0xff9a2e, 0x4ab8ff, 0xa86bff].map(c => new THREE.Color(c));
 const KEY_GLOW = new THREE.Color(0xffb050);
 const guides = [];
-function addGuide(key, t) {
+function addGuide(key, t, bus) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: GUIDE_COLORS[key % 7], transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   s.visible = false; ranat.add(s);
-  guides.push({ key, t, s, done: null, doneT: 0 });
+  guides.push({ key, t, bus, s, done: null, doneT: 0 });
 }
 function updateGuides() {
   keys.forEach(k => { k.userData.guide = 0; });
@@ -909,22 +911,22 @@ function updateGuides() {
     k.userData.guide = Math.max(k.userData.guide, Math.min(u, 1));
   }
 }
-// returns true when the strike landed on a guide's beat
+// returns the guide whose beat the strike landed on, or null
 function judge(i) {
-  if (state !== 'build') return false;
+  if (state !== 'build') return null;
   const at = ac.currentTime;
   let best = null;
   for (const g of guides) {
     if (g.done || g.key !== i || Math.abs(g.t - at) > HIT_WIN) continue;
     if (!best || Math.abs(g.t - at) < Math.abs(best.t - at)) best = g;
   }
-  if (!best) return false;
+  if (!best) return null;
   best.done = 'hit';
   const perfect = Math.abs(best.t - at) <= PERFECT_WIN;
   burst(keyWorld(i), perfect ? 0.55 : 0.35, perfect ? 0.5 : 0.35);
   if (perfect) ripple(0.9);
   buildNext(i);
-  return true;
+  return best;
 }
 
 /* =====================================================================
@@ -1071,10 +1073,14 @@ function hitKeysFromRay() {
 }
 function strike(i, vel = 1.1) {
   if (!ac || i < 0) return;
+  const g = mode === 'guide' && state === 'build' ? judge(i) : null;
+  if (g && g.bus) {
+    if (g.t > ac.currentTime) g.bus.gain.setValueAtTime(0, ac.currentTime); // struck before the teacher's note: replace it
+    else vel *= 0.35; // the teacher already played this beat: add a light accent, not a second full note
+  }
   playRanat(i, ac.currentTime, vel);
   flashKey(i, 0.5 + vel * 0.8);
-  if (mode === 'guide' && state === 'build') judge(i);
-  else if (state === 'build') buildNext(i);
+  if (state === 'build') { if (mode !== 'guide') buildNext(i); } // in guide mode judge() builds
   else { sparkle(keyWorld(i)); sparkle(keyWorld(i)); }
   ripple(0.5);
   hideHintSoon();
