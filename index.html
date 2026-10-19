@@ -142,7 +142,8 @@ camera.position.set(0, 1.6, 0);
 camera.rotation.order = 'YXZ';
 rig.add(camera);
 
-scene.add(new THREE.HemisphereLight(0x7a6cff, 0x1a0c05, 0.35));
+const hemi = new THREE.HemisphereLight(0x7a6cff, 0x1a0c05, 0.35);
+scene.add(hemi);
 const moon = new THREE.DirectionalLight(0xa9b6ff, 0.55);
 moon.position.set(12, 25, 8);
 scene.add(moon);
@@ -285,13 +286,18 @@ const gableMat = new THREE.MeshStandardMaterial({ map: gableTex, color: 0xd8b48a
    ===================================================================== */
 const sky = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: {},
+  uniforms: { uDawn: { value: 0 } },
   vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader: `varying vec3 vP; void main(){
+  // night, then a dawn that rises beyond the far end of the hall (-z, off to the left of the title)
+  fragmentShader: `uniform float uDawn; varying vec3 vP; void main(){
     float h = vP.y;
     vec3 top = vec3(.008,.006,.02), hor = vec3(.10,.055,.16), bot = vec3(.02,.012,.02);
     vec3 c = h > 0. ? mix(hor, top, pow(h,.55)) : mix(hor, bot, pow(-h,.4));
-    gl_FragColor = vec4(c,1.); }`
+    vec3 dTop = vec3(.16,.32,.62), dHor = vec3(1.,.66,.42), dBot = vec3(.22,.14,.16);
+    vec3 d = h > 0. ? mix(dHor, dTop, pow(h,.45)) : mix(dHor, dBot, pow(-h,.35));
+    float sun = max(dot(vP, normalize(vec3(-.55, .1, -1.))), 0.);
+    d += vec3(1., .78, .5) * (pow(sun, 60.) * 1.6 + pow(sun, 6.) * .35);
+    gl_FragColor = vec4(mix(c, d, uDawn), 1.); }`
 }));
 scene.add(sky);
 
@@ -511,6 +517,92 @@ document.fonts.load('80px Chonburi').finally(() => {
   });
   titleMat.needsUpdate = true;
 });
+
+// --- เมือง: once the hall is complete the sky turns to dawn and a city of ศาลา and เจดีย์
+// rises from the mirror floor around it, nearest first
+const roofMat = new THREE.MeshStandardMaterial({ color: 0x8f2412, roughness: 0.5, metalness: 0.15 });
+const cityMats = { stucco, lacquer, roof: roofMat, gold: goldMat };
+function finishBuilding(parts) {
+  const g = new THREE.Group();
+  for (const [k, list] of Object.entries(parts)) {
+    if (!list.length) continue;
+    g.add(new THREE.Mesh(mergeGeometries(list.map(x => x.index ? x.toNonIndexed() : x)), cityMats[k]));
+  }
+  return g;
+}
+const at = (geo, x, y, z, ry = 0) => { if (ry) geo.rotateY(ry); return geo.translate(x, y, z); };
+function prism(w, rise, depth, y) {
+  const sh = new THREE.Shape(); sh.moveTo(-w / 2, 0); sh.lineTo(w / 2, 0); sh.lineTo(0, rise); sh.closePath();
+  return new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }).translate(0, y, -depth / 2);
+}
+function makeSala(w, d, h) {
+  const P = { stucco: [], lacquer: [], roof: [], gold: [] };
+  P.stucco.push(at(new THREE.BoxGeometry(w + 1, 0.8, d + 1), 0, 0.4, 0));
+  P.gold.push(at(new THREE.BoxGeometry(w + 1.1, 0.1, d + 1.1), 0, 0.8, 0));
+  const n = Math.max(2, Math.round(d / 2.5));
+  for (const x of [-w / 2, w / 2]) for (let i = 0; i < n; i++)
+    P.lacquer.push(at(new THREE.CylinderGeometry(0.2, 0.25, h, 8), x, 0.8 + h / 2, -d / 2 + (d * i) / (n - 1)));
+  const y = 0.8 + h, rise = w * 0.6;
+  P.roof.push(prism(w + 2.4, 0.9, d + 0.6, y - 0.55));
+  P.roof.push(prism(w + 1.4, rise, d + 1.4, y));
+  P.gold.push(at(new THREE.BoxGeometry(0.14, 0.14, d + 1.5), 0, y + rise, 0));
+  for (const z of [-1, 1]) P.gold.push(at(new THREE.ConeGeometry(0.12, 0.9, 6), 0, y + rise + 0.4, z * (d + 1.4) / 2));
+  return { g: finishBuilding(P), h: y + rise + 0.9 };
+}
+const BELL = [[0, 0], [0.8, 0], [0.82, 0.1], [0.76, 0.5], [0.6, 0.9], [0.36, 1.2], [0.24, 1.36], [0, 1.4]];
+function makeChedi(s) {
+  const P = { stucco: [], lacquer: [], roof: [], gold: [] };
+  let y = 0;
+  [2.4, 2, 1.6].forEach(b => {
+    P.stucco.push(at(new THREE.BoxGeometry(b * s, 0.5 * s, b * s), 0, y + 0.25 * s, 0));
+    P.gold.push(at(new THREE.BoxGeometry(b * s + 0.06, 0.06 * s, b * s + 0.06), 0, y + 0.5 * s, 0));
+    y += 0.5 * s;
+  });
+  P.stucco.push(at(new THREE.LatheGeometry(BELL.map(([r, h]) => new THREE.Vector2(r * s, h * s)), 20), 0, y, 0));
+  y += 1.4 * s;
+  P.stucco.push(at(new THREE.BoxGeometry(0.5 * s, 0.4 * s, 0.5 * s), 0, y + 0.2 * s, 0));
+  y += 0.4 * s;
+  P.gold.push(at(new THREE.ConeGeometry(0.22 * s, 1.9 * s, 12), 0, y + 0.95 * s, 0));
+  P.gold.push(at(new THREE.SphereGeometry(0.07 * s, 8, 6), 0, y + 1.95 * s, 0));
+  return { g: finishBuilding(P), h: y + 2 * s };
+}
+const city = new THREE.Group();
+city.visible = false;
+scene.add(city);
+const buildings = [];
+{
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const place = (b, r, a, face) => {
+    b.g.position.set(Math.sin(a) * r, -1.25, Math.cos(a) * r);
+    if (face) b.g.rotation.y = a; // gable end toward the hall
+    city.add(b.g);
+    buildings.push({ ...b, r, delay: (r - 36) * 0.06 + rnd() * 0.4, shown: false });
+  };
+  for (let i = 0; i < 12; i++) place(makeSala(4 + rnd() * 3, 7 + rnd() * 5, 3 + rnd() * 1.5), 40 + rnd() * 14, (i + rnd() * 0.5) / 12 * Math.PI * 2, true);
+  for (let i = 0; i < 10; i++) place(makeChedi(1.4 + rnd() * 1.6), 62 + rnd() * 26, (i + 0.5 + rnd() * 0.4) / 10 * Math.PI * 2, false);
+  for (let i = 0; i < 4; i++) place(makeChedi(4 + rnd() * 1.2), 105 + rnd() * 15, (i + 0.5) / 4 * Math.PI * 2, false);
+}
+let cityClock = 0;
+const NIGHT_FOG = new THREE.Color(0x07040e), DAWN_FOG = new THREE.Color(0xc8a08c), MOON = new THREE.Color(0xa9b6ff), SUN = new THREE.Color(0xffd2a0);
+function updateCity() {
+  cityClock = state === 'complete' ? cityClock + dt : Math.max(0, cityClock - dt * 2.5);
+  const dawn = smooth(clamp01(cityClock / 6));
+  sky.material.uniforms.uDawn.value = dawn;
+  stars.material.opacity = 0.8 * (1 - dawn);
+  scene.fog.color.copy(NIGHT_FOG).lerp(DAWN_FOG, dawn);
+  scene.fog.density = lerp(0.016, 0.006, dawn);
+  hemi.intensity = 0.35 + dawn * 0.9;
+  moon.intensity = 0.55 + dawn * 1.3; moon.color.copy(MOON).lerp(SUN, dawn);
+  city.visible = cityClock > 0;
+  for (const b of buildings) {
+    const e = easeOutCubic(clamp01((cityClock - b.delay) / 2.5));
+    b.g.visible = e > 0;
+    b.g.position.y = -1.25 - (1 - e) * (b.h + 2);
+    if (e > 0 && !b.shown) { b.shown = true; burst(b.g.position.clone().setY(-1.25), Math.min(10, 3 + b.h * 0.4)); }
+    if (e === 0) b.shown = false;
+  }
+}
 
 /* =====================================================================
    ระนาดเอก — floats in front of the viewer, plays itself, and can be played
@@ -862,7 +954,7 @@ function setMode(m) {
 function stepState() {
   if (state === 'void' && now - stateT > 3) setState('build');
   else if (state === 'build' && nextBuild >= N && now > lastPieceEnd + 0.3) { setState('complete'); goldPulse = 1.5; }
-  else if (state === 'complete' && now - stateT > 18) dissolveAll();
+  else if (state === 'complete' && now - stateT > 26) dissolveAll(); // long enough to take in the dawn city
   else if (state === 'dissolve' && now - stateT > N * 0.07 + 1.2) {
     pieces.forEach(p => { p.state = 'hidden'; p.w.visible = false; p.w.position.copy(p.c); p.w.scale.setScalar(1); });
     nextBuild = 0; builtCount = 0; buildTick = 0;
@@ -1107,6 +1199,7 @@ renderer.setAnimationLoop(() => {
   if (ac) while (events.length && events[0].t <= ac.currentTime) fire(events.shift());
   stepState();
   updatePieces();
+  updateCity();
   updateFx();
   applyLook();
 
