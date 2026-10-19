@@ -846,9 +846,9 @@ function dissolveAll() {
     p.state = 'out'; p.burst = false; p.t0 = now + j * 0.07;
   }
 }
-// where the player stands: in the middle of the hall to watch, or out in front on the mirror floor
-// when playing, so the whole hall rises ahead of them while they play
-const STAGE = { auto: new V3(0, 0, 0), guide: new V3(0, -1.25, 34) };
+// where the player stands: in the middle of the hall to watch, or near its back end when playing,
+// looking down the length of the hall so the columns and roofs rise ahead of them while they play
+const STAGE = { auto: new V3(0, 0, 0), guide: new V3(0, 0, 9) };
 function setMode(m) {
   if (m === mode) return;
   mode = m;
