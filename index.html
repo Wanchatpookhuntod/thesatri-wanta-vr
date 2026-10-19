@@ -640,7 +640,7 @@ let nextT = 0, step = 0, phraseIdx = 0, posInPhrase = 0, lastKey = 4, buildTick 
 const events = [];
 
 function stepDur() {
-  if (state === 'build') return mode === 'guide' ? lerp(0.5, 0.4, smooth(builtCount / N)) : lerp(0.44, 0.21, smooth(builtCount / N));
+  if (state === 'build') return mode === 'guide' ? lerp(0.6, 0.45, smooth(builtCount / N)) : lerp(0.44, 0.21, smooth(builtCount / N));
   if (state === 'complete') return 0.21;
   if (state === 'dissolve') return 0.27;
   return 0.4;
@@ -650,14 +650,16 @@ function scheduleStep(t) {
   const soft = mode === 'guide' && state === 'build';
   if (n >= 0) {
     const k = P[n]; lastKey = k;
-    if (soft && step % 2 === 0) {
+    if (soft) {
+      // every melody note gets a guide; the teacher plays it softly underneath
       playRanat(k, t, 0.3); events.push({ t, type: 'note', key: k, soft });
       addGuide(k, t);
     } else {
-      playRanat(k, t, soft ? 0.5 : 1); events.push({ t, type: 'note', key: k, build: !soft, soft });
-      if (!soft && step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
+      playRanat(k, t, 1); events.push({ t, type: 'note', key: k, build: true });
+      if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
     }
   } else {
+    if (soft) addGuide(lastKey, t); // the roll's held note is struck once
     for (let r = 0; r < 4; r++) {
       const tt = t + (r * d) / 4, kk = r % 2 ? Math.min(KEYS - 1, lastKey + 7) : lastKey;
       playRanat(kk, tt, soft ? 0.3 : 0.45); events.push({ t: tt, type: 'note', key: kk, soft });
