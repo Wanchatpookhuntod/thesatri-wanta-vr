@@ -897,7 +897,7 @@ const teacherLevel = () => lerp(0.55, 0.2, comboLevel());
 const accompaniment = soft => soft ? 1 - 0.6 * comboLevel() : 1;
 const comboMat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false, fog: false });
 const comboSprite = new THREE.Sprite(comboMat);
-comboSprite.scale.set(0.5, 0.17, 1); comboSprite.position.set(0, 0.34, -0.12);
+comboSprite.scale.set(0.5, 0.17, 1); comboSprite.position.set(-0.86, 0.12, 0.02); // beside the ranat, out of the guides' path
 ranat.add(comboSprite);
 let comboPop = 0;
 function setCombo(n) {
@@ -956,8 +956,7 @@ function judge(i) {
   best.done = 'hit';
   const perfect = Math.abs(best.t - at) <= PERFECT_WIN;
   setCombo(combo + 1);
-  const grow = 1 + comboLevel() * 0.6; // bursts swell with the combo
-  burst(keyWorld(i), (perfect ? 0.55 : 0.35) * grow, (perfect ? 0.5 : 0.35) * grow);
+  hitFlame(keyWorld(i), perfect);
   if (perfect) ripple(0.9);
   if (combo % 10 === 0) { ripple(1.4); goldPulse = 1; } // every 10 in a row the hall flashes gold
   buildNext(i);
@@ -972,9 +971,9 @@ function sprite(pos, size, color = 0xffd08a) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   s.position.copy(pos); s.scale.setScalar(size); scene.add(s); return s;
 }
-function spawnTrail(from, to, dur, onArrive) {
+function spawnTrail(from, to, dur, onArrive, size = 0.35) {
   const ctrl = from.clone().lerp(to, 0.5); ctrl.y += 2 + from.distanceTo(to) * 0.25;
-  fx.push({ kind: 'trail', s: sprite(from, 0.35), from: from.clone(), ctrl, to: to.clone(), t0: now, dur, onArrive });
+  fx.push({ kind: 'trail', s: sprite(from, size), from: from.clone(), ctrl, to: to.clone(), t0: now, dur, onArrive });
 }
 // spread scales the sparks' size and speed: 1 for the hall far away, small for feedback at arm's length
 function burst(pos, size, spread = 1) {
@@ -983,6 +982,12 @@ function burst(pos, size, spread = 1) {
     const v = new V3().randomDirection().multiplyScalar((1 + Math.random() * 2.5) * spread);
     fx.push({ kind: 'spark', s: sprite(pos, 0.2 * spread), v, t0: now, dur: 1 + Math.random() * 0.6 });
   }
+}
+// Guitar Hero style hit feedback: a brief white-gold flame that rises a few cm from the key and is gone in
+// 0.25 s, before the next note lands, and never flies up into the path of the falling guide lights
+function hitFlame(pos, perfect) {
+  const size = perfect ? 0.17 : 0.12;
+  fx.push({ kind: 'flame', s: sprite(pos, size, 0xfff4dc), t0: now, dur: 0.25, size });
 }
 function sparkle(pos) {
   fx.push({ kind: 'spark', s: sprite(pos, 0.12), v: new V3((Math.random() - .5) * .3, 0.9 + Math.random() * .6, (Math.random() - .5) * .3), t0: now, dur: 1.4 });
@@ -1011,6 +1016,8 @@ function updateFx() {
       e.s.scale.setScalar(e.size * (1 + t * 1.5)); e.s.material.opacity = 1 - t;
     } else if (e.kind === 'spark') {
       e.s.position.addScaledVector(e.v, dt); e.v.multiplyScalar(0.97); e.s.material.opacity = 1 - t;
+    } else if (e.kind === 'flame') {
+      e.s.position.y += dt * 0.3; e.s.scale.setScalar(e.size * (1 - t * 0.5)); e.s.material.opacity = 1 - t * t;
     } else if (e.kind === 'ripple') {
       e.m.scale.setScalar(0.6 + easeOutCubic(t) * 26); e.m.material.opacity = e.o * (1 - t);
     }
@@ -1029,7 +1036,9 @@ function buildNext(fromKey) {
   if (state !== 'build' || nextBuild >= N) return;
   const p = pieces[nextBuild++];
   p.state = 'anim'; p.t0 = now + FLY; lastPieceEnd = p.t0 + PIECE_DUR;
-  spawnTrail(keyWorld(fromKey), p.c, FLY, () => { burst(p.c, Math.min(6, 1.2 + p.size * 0.25)); builtCount++; updateHud(); });
+  // in guide mode the light leaves from under the back of the ranat, away from where the guides fall
+  const from = mode === 'guide' ? ranat.localToWorld(new V3(keys[fromKey].position.x, -0.2, -0.35)) : keyWorld(fromKey);
+  spawnTrail(from, p.c, FLY, () => { burst(p.c, Math.min(6, 1.2 + p.size * 0.25)); builtCount++; updateHud(); }, mode === 'guide' ? 0.2 : 0.35);
 }
 function updatePieces() {
   for (let i = 0; i < N; i++) {
@@ -1346,7 +1355,8 @@ renderer.setAnimationLoop(() => {
 
   const prog = state === 'complete' ? 1 : state === 'build' ? builtCount / N : state === 'dissolve' ? 0.6 : 0;
   goldPulse *= Math.pow(0.15, dt);
-  goldMats.forEach(m => { m.emissiveIntensity = 1 + prog * 1.2 + goldPulse * 3; });
+  const comboGlow = mode === 'guide' && state === 'build' ? comboLevel() * 1.2 : 0; // the combo is celebrated in the hall
+  goldMats.forEach(m => { m.emissiveIntensity = 1 + prog * 1.2 + goldPulse * 3 + comboGlow; });
   heartLight.intensity = lerp(heartLight.intensity, 0.4 + prog * 5 + goldPulse * 3, 0.05);
   lotus.material.opacity = 0.35 + 0.25 * Math.sin(now * 1.4) * 0.5 + (1 - prog) * 0.2;
   lotus.rotation.z += dt * 0.03;
