@@ -278,7 +278,10 @@ const goldDS = goldMat.clone(); goldDS.side = THREE.DoubleSide;
 const goldMats = [goldMat, goldDS];
 const lacquer = new THREE.MeshStandardMaterial({ color: 0x6a1410, roughness: 0.38, metalness: 0.25 });
 const stucco = new THREE.MeshStandardMaterial({ color: 0xe6dccb, roughness: 0.85 });
-const floorMat = new THREE.MeshStandardMaterial({ map: stoneFloorTex, roughness: 0.18, metalness: 0.55 });
+// flat layers that lie on other surfaces (floor, lotus, ripples, grass) are pulled forward in depth with
+// polygonOffset, since a few mm of height is not enough for the depth buffer at VR distances
+const LAYER = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 };
+const floorMat = new THREE.MeshStandardMaterial({ map: stoneFloorTex, roughness: 0.18, metalness: 0.55, ...LAYER });
 const gableMat = new THREE.MeshStandardMaterial({ map: gableTex, color: 0xd8b48a, roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide });
 
 /* =====================================================================
@@ -324,9 +327,9 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = -1.25;
 scene.add(mirror);
 
 const lotus = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({
-  map: lotusTex, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending
+  map: lotusTex, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, ...LAYER, polygonOffsetUnits: -8
 }));
-lotus.rotation.x = -Math.PI / 2; lotus.position.y = 0.012;
+lotus.rotation.x = -Math.PI / 2; lotus.position.y = 0.03;
 scene.add(lotus);
 
 /* =====================================================================
@@ -367,10 +370,11 @@ const roofGeom = T => {
 [[19, 31, -0.875], [17.5, 29.5, -0.525], [16, 28, -0.175]].forEach(([w, d, y], i) => {
   const g = new THREE.Group();
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.35, d), stucco); m.position.y = y; g.add(m);
-  const trim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.05, d + 0.06), goldMat); trim.position.y = y + 0.15; g.add(trim);
+  // the trim sits 3 cm below the tier's top face so the two never share a plane (that z-fights, worst in VR)
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.05, d + 0.06), goldMat); trim.position.y = y + 0.12; g.add(trim);
   if (i === 2) {
     const f = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.4, d - 0.4), floorMat);
-    f.rotation.x = -Math.PI / 2; f.position.y = 0.002; g.add(f);
+    f.rotation.x = -Math.PI / 2; f.position.y = 0.01; g.add(f);
   }
   addPiece(g, i);
 });
@@ -616,7 +620,7 @@ const grassTex = canvasTex(256, 256, (g, w, h) => {
 });
 grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping; grassTex.repeat.set(70, 70);
 const grassReveal = { value: 0 };
-const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95 });
+const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95, ...LAYER });
 grassMat.onBeforeCompile = sh => {
   sh.uniforms.uReveal = grassReveal;
   sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vGW;')
@@ -948,10 +952,10 @@ function sparkle(pos) {
 }
 function ripple(strength = 1) {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 128), new THREE.MeshBasicMaterial({
-    color: 0xd98a3a, transparent: true, opacity: 0.3 * strength, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+    color: 0xd98a3a, transparent: true, opacity: 0.3 * strength, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, ...LAYER, polygonOffsetUnits: -8
   }));
   m.rotation.x = -Math.PI / 2;
-  m.position.set(rig.position.x, mode === 'guide' ? rig.position.y + 0.03 : builtCount > 2 ? 0.03 : -1.2, rig.position.z);
+  m.position.set(rig.position.x, mode === 'guide' ? rig.position.y + 0.04 : builtCount > 2 ? 0.04 : -1.2, rig.position.z);
   scene.add(m);
   fx.push({ kind: 'ripple', m, t0: now, dur: 3.2, o: 0.3 * strength });
 }
@@ -1296,7 +1300,7 @@ renderer.setAnimationLoop(() => {
   ranat.position.copy(rig.position).add(ranatBase);
   ranat.position.y += Math.sin(now * 0.8) * (renderer.xr.isPresenting ? 0.003 : 0.012);
   lowLight.position.copy(rig.position).add(LOW_LIGHT);
-  lotus.position.set(rig.position.x, rig.position.y + 0.012, rig.position.z);
+  lotus.position.set(rig.position.x, rig.position.y + 0.03, rig.position.z);
   updateMallets();
 
   const prog = state === 'complete' ? 1 : state === 'build' ? builtCount / N : state === 'dissolve' ? 0.6 : 0;
