@@ -676,82 +676,37 @@ setInterval(() => {
 }, 25);
 
 /* =====================================================================
-   Guide notes, Guitar Hero style: a lane runs back from every key up a sloping
-   highway behind the ranat; each note slides down its lane and lands on the beat
+   Guide lights: each falls onto its key and lands exactly on the beat
    ===================================================================== */
-const APPROACH = 2.0, HIT_WIN = 0.2, PERFECT_WIN = 0.08;
-const LANE_LEN = 1.1, LANE_TILT = 0.35;
-const highway = new THREE.Group();
-ranat.add(highway);
-const laneStart = [], laneEnd = [], laneMats = [];
-{
-  const farZ = -0.18, dz = -Math.cos(LANE_TILT) * LANE_LEN, dy = Math.sin(LANE_TILT) * LANE_LEN;
-  const y0 = 0.07, mid = new V3(0, y0 + dy / 2, farZ + dz / 2);
-  const deck = new THREE.Mesh(new THREE.PlaneGeometry(KEYS * 0.07 + 0.04, LANE_LEN),
-    new THREE.MeshBasicMaterial({ color: 0x0c0614, transparent: true, opacity: 0, depthWrite: false, fog: false }));
-  deck.position.copy(mid); deck.rotation.x = -Math.PI / 2 + LANE_TILT;
-  highway.add(deck); laneMats.push(deck.material);
-  const edges = [];
-  for (let i = 0; i <= KEYS; i++) {
-    const x = -0.455 + (i - 0.5) * 0.07;
-    edges.push(x, y0 + 0.002, farZ, x, y0 + dy + 0.002, farZ + dz);
-  }
-  const lines = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(edges, 3)),
-    new THREE.LineBasicMaterial({ color: 0xe9c27a, transparent: true, opacity: 0, depthWrite: false, fog: false }));
-  highway.add(lines); laneMats.push(lines.material);
-  for (let i = 0; i < KEYS; i++) {
-    const k = keys[i], x = k.position.x;
-    laneStart.push(new V3(x, y0 + dy + 0.02, farZ + dz));
-    laneEnd.push(new V3(x, k.userData.y0 + 0.03, 0));
-    const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.062, LANE_LEN), new THREE.MeshBasicMaterial({
-      color: 0xffc46a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    strip.position.set(x, mid.y + 0.004, mid.z); strip.rotation.x = deck.rotation.x;
-    highway.add(strip); k.userData.lane = strip.material;
-  }
-}
-let highwayFade = 0;
-
-const gemGeo = new THREE.BoxGeometry(0.056, 0.014, 0.032);
+const APPROACH = 1.6, HIT_WIN = 0.2, PERFECT_WIN = 0.08, DROP = 0.45;
 const guides = [];
 function addGuide(key, t) {
-  const obj = new THREE.Group();
-  const gem = new THREE.Mesh(gemGeo, new THREE.MeshBasicMaterial({ color: 0xffdc96, transparent: true, opacity: 0, fog: false }));
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffe2a8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-  glow.scale.setScalar(0.13);
-  obj.add(gem, glow); obj.visible = false; ranat.add(obj);
-  guides.push({ key, t, obj, mats: [gem.material, glow.material], done: null, doneT: 0 });
-}
-function setGuideLook(g, color, opacity) {
-  g.mats.forEach(m => { m.color.setHex(color); m.opacity = opacity; });
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xfff0c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  s.visible = false; ranat.add(s);
+  guides.push({ key, t, s, done: null, doneT: 0 });
 }
 function updateGuides() {
   keys.forEach(k => { k.userData.guide = 0; });
-  highwayFade = lerp(highwayFade, mode === 'guide' && state === 'build' ? 1 : 0, Math.min(1, dt * 3));
-  laneMats[0].opacity = 0.55 * highwayFade; laneMats[1].opacity = 0.35 * highwayFade;
-  highway.visible = highwayFade > 0.01;
   if (!ac) return;
   const at = ac.currentTime;
   for (let i = guides.length - 1; i >= 0; i--) {
-    const g = guides[i];
+    const g = guides[i], k = keys[g.key], top = k.userData.y0 + 0.012;
     if (!g.done && (mode !== 'guide' || state !== 'build')) { g.done = 'cancel'; g.doneT = at; }
     if (!g.done && at > g.t + HIT_WIN) { g.done = 'miss'; g.doneT = at; }
-    const u = 1 - (g.t - at) / APPROACH; // 0 at the top of the lane, 1 on the key, on the beat
     if (g.done) {
       const e = (at - g.doneT) / 0.4;
-      if (g.done === 'hit' || e >= 1) { ranat.remove(g.obj); g.mats.forEach(m => m.dispose()); guides.splice(i, 1); continue; }
-      // a missed note keeps sliding past the key and fades out
-      g.obj.position.lerpVectors(laneStart[g.key], laneEnd[g.key], u);
-      setGuideLook(g, 0x8a7aa8, 0.5 * (1 - e));
+      if (g.done === 'hit' || e >= 1) { ranat.remove(g.s); g.s.material.dispose(); guides.splice(i, 1); continue; }
+      g.s.material.color.setHex(0x8a7aa8); g.s.material.opacity = 0.5 * (1 - e); g.s.position.y -= dt * 0.3;
       continue;
     }
+    const u = 1 - (g.t - at) / APPROACH; // 0 when it appears, 1 on the beat
     if (u < 0) continue;
-    g.obj.visible = true;
-    g.obj.position.lerpVectors(laneStart[g.key], laneEnd[g.key], u);
-    setGuideLook(g, 0xffdc96, Math.min(1, u * 5) * highwayFade);
-    const k = keys[g.key];
+    g.s.visible = true;
+    g.s.position.set(k.position.x, top + 0.012 + DROP * Math.max(0, 1 - u), k.position.z);
+    g.s.scale.setScalar(lerp(0.07, 0.15, Math.min(u, 1)));
+    g.s.material.opacity = Math.min(1, u * 4);
     k.userData.guide = Math.max(k.userData.guide, Math.min(u, 1));
   }
-  keys.forEach(k => { k.userData.lane.opacity = (0.03 + k.userData.guide * 0.22) * highwayFade; });
 }
 // returns true when the strike landed on a guide's beat
 function judge(i) {
