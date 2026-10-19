@@ -889,7 +889,12 @@ setInterval(() => {
 /* =====================================================================
    Guide lights: each falls onto its key and lands exactly on the beat
    ===================================================================== */
-const APPROACH = 1.6, HIT_WIN = 0.2, PERFECT_WIN = 0.08, DROP = 0.45;
+const APPROACH = 2.0, HIT_WIN = 0.2, PERFECT_WIN = 0.08;
+
+// Guitar Hero style lanes: a thin light line in each key's colour runs out from the far side of the ranat,
+// rising gently away from the player; each guide light travels down its lane and lands on its key on the beat
+const LANE_LEN = 1.4, LANE_RISE = 0.28;
+const laneStart = [], laneEnd = [], laneMats = [];
 // one colour per note of the 7-tone octave, the Thai colours of the days (อาทิตย์ … เสาร์),
 // so neighbouring keys never share a colour
 const GUIDE_COLORS = [0xff4a3d, 0xffe14a, 0xff6fb5, 0x4cff7a, 0xff9a2e, 0x4ab8ff, 0xa86bff].map(c => new THREE.Color(c));
@@ -920,6 +925,20 @@ function setCombo(n, word = '') {
   if (n > 0) comboPop = 1;
   updateHud();
 }
+const lanes = new THREE.Group();
+ranat.add(lanes);
+keys.forEach((k, i) => {
+  const end = new V3(k.position.x, k.userData.y0 + 0.03, 0);
+  const start = new V3(k.position.x, end.y + LANE_RISE, -LANE_LEN);
+  laneStart.push(start); laneEnd.push(end);
+  const len = start.distanceTo(end);
+  const mat = new THREE.MeshBasicMaterial({ color: GUIDE_COLORS[i % 7], transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(0.008, len), mat);
+  line.position.copy(start).lerp(end, 0.5);
+  line.rotation.x = -Math.PI / 2 + Math.atan2(LANE_RISE, LANE_LEN); // lie along the lane, facing up
+  lanes.add(line); laneMats.push(mat);
+});
+let lanesFade = 0;
 const guides = [];
 function addGuide(key, t, bus, vel) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: GUIDE_COLORS[key % 7], transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
@@ -931,26 +950,32 @@ function updateGuides() {
   comboMat.opacity = lerp(comboMat.opacity, mode === 'guide' && state === 'build' && (combo >= 3 || now - judgeT < 0.6) ? 1 : 0, Math.min(1, dt * 8));
   comboSprite.scale.set(0.5 * (1 + comboPop * 0.25), 0.21 * (1 + comboPop * 0.25), 1);
   keys.forEach(k => { k.userData.guide = 0; });
+  lanesFade = lerp(lanesFade, mode === 'guide' && state === 'build' ? 1 : 0, Math.min(1, dt * 3));
+  lanes.visible = lanesFade > 0.01;
   if (!ac) return;
   const at = ac.currentTime;
   for (let i = guides.length - 1; i >= 0; i--) {
-    const g = guides[i], k = keys[g.key], top = k.userData.y0 + 0.012;
+    const g = guides[i], k = keys[g.key];
     if (!g.done && (mode !== 'guide' || state !== 'build')) { g.done = 'cancel'; g.doneT = at; }
     if (!g.done && at > g.t + HIT_WIN) { g.done = 'miss'; g.doneT = at; if (combo) setCombo(0); }
     if (g.done) {
       const e = (at - g.doneT) / 0.4;
       if (g.done === 'hit' || e >= 1) { ranat.remove(g.s); g.s.material.dispose(); guides.splice(i, 1); continue; }
-      g.s.material.color.setHex(0x55505f); g.s.material.opacity = 0.5 * (1 - e); g.s.position.y -= dt * 0.3;
+      // a missed light keeps travelling past the key toward the player and fades to grey
+      g.s.position.lerpVectors(laneStart[g.key], laneEnd[g.key], 1 + (at - g.t) / APPROACH);
+      g.s.material.color.setHex(0x55505f); g.s.material.opacity = 0.5 * (1 - e);
       continue;
     }
-    const u = 1 - (g.t - at) / APPROACH; // 0 when it appears, 1 on the beat
+    const u = 1 - (g.t - at) / APPROACH; // 0 at the far end of the lane, 1 on the key, on the beat
     if (u < 0) continue;
     g.s.visible = true;
-    g.s.position.set(k.position.x, top + 0.012 + DROP * Math.max(0, 1 - u), k.position.z);
-    g.s.scale.setScalar(lerp(0.07, 0.15, Math.min(u, 1)));
-    g.s.material.opacity = Math.min(1, u * 4);
+    g.s.position.lerpVectors(laneStart[g.key], laneEnd[g.key], u);
+    g.s.scale.setScalar(lerp(0.07, 0.14, Math.min(u, 1)));
+    g.s.material.opacity = Math.min(1, u * 5);
     k.userData.guide = Math.max(k.userData.guide, Math.min(u, 1));
   }
+  // every lane shows faintly; a lane with a light on it brightens as the light comes in
+  laneMats.forEach((m, i) => { m.opacity = (0.12 + keys[i].userData.guide * 0.5) * lanesFade; });
 }
 // returns the guide whose beat the strike landed on, or null
 function judge(i) {
