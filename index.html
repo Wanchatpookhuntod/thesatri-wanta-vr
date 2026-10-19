@@ -850,16 +850,16 @@ function scheduleStep(t) {
       // every melody note gets a guide. The teacher's note is scheduled in full, as in watch mode, and is
       // silenced if the player strikes the key before the beat (see strike())
       events.push({ t, type: 'note', key: k, soft });
-      addGuide(k, t, playRanat(k, t, 1));
+      addGuide(k, t, playRanat(k, t, 1), 1);
     } else {
       playRanat(k, t, 1); events.push({ t, type: 'note', key: k, build: true });
     }
-    if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7, soft }); }
+    if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5 * accompaniment(soft)); events.push({ t, type: 'note', key: k + 7, soft }); }
   } else {
-    if (soft) addGuide(lastKey, t, playRanat(lastKey, t, 0.45)); // the roll's first stroke is the player's
+    if (soft) addGuide(lastKey, t, playRanat(lastKey, t, 0.45), 0.45); // the roll's first stroke is the player's
     for (let r = soft ? 1 : 0; r < 4; r++) {
       const tt = t + (r * d) / 4, kk = r % 2 ? Math.min(KEYS - 1, lastKey + 7) : lastKey;
-      playRanat(kk, tt, 0.45); events.push({ t: tt, type: 'note', key: kk, soft });
+      playRanat(kk, tt, 0.45 * accompaniment(soft)); events.push({ t: tt, type: 'note', key: kk, soft });
     }
   }
   if (step % 2 === 0) playChing(t, (step / 2) % 2 === 0);
@@ -872,6 +872,12 @@ setInterval(() => {
   // guide mode looks further ahead so each guide light can start falling before its note
   const lead = mode === 'guide' ? APPROACH + 0.2 : 0.12;
   while (nextT < ac.currentTime + lead) { scheduleStep(nextT); nextT += stepDur(); }
+  // just before each guided beat, set the teacher's note to the level the current combo allows
+  for (const g of guides) {
+    if (g.done || g.leveled || g.t - ac.currentTime > 0.15) continue;
+    g.leveled = true;
+    g.bus.gain.setValueAtTime(0.3 * g.vel * teacherLevel(), Math.max(g.t - 0.01, ac.currentTime));
+  }
 }, 25);
 
 /* =====================================================================
@@ -882,20 +888,46 @@ const APPROACH = 1.6, HIT_WIN = 0.2, PERFECT_WIN = 0.08, DROP = 0.45;
 // so neighbouring keys never share a colour
 const GUIDE_COLORS = [0xff4a3d, 0xffe14a, 0xff6fb5, 0x4cff7a, 0xff9a2e, 0x4ab8ff, 0xa86bff].map(c => new THREE.Color(c));
 const KEY_GLOW = new THREE.Color(0xffb050);
+
+// คอมโบ: consecutive on-beat strikes. The teacher plays a missed note softly so the music never stops;
+// as the combo grows the teacher fades further and the player's own strikes carry the melody
+let combo = 0, bestCombo = 0;
+const comboLevel = () => smooth(clamp01(combo / 10));
+const teacherLevel = () => lerp(0.55, 0.2, comboLevel());
+const accompaniment = soft => soft ? 1 - 0.6 * comboLevel() : 1;
+const comboMat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false, fog: false });
+const comboSprite = new THREE.Sprite(comboMat);
+comboSprite.scale.set(0.5, 0.17, 1); comboSprite.position.set(0, 0.34, -0.12);
+ranat.add(comboSprite);
+let comboPop = 0;
+function setCombo(n) {
+  combo = n; bestCombo = Math.max(bestCombo, n);
+  if (comboMat.map) comboMat.map.dispose();
+  comboMat.map = canvasTex(384, 128, (g, w, h) => {
+    g.textAlign = 'center'; g.shadowColor = 'rgba(255,170,60,.9)'; g.shadowBlur = 18;
+    g.fillStyle = '#fff1c9'; g.font = '64px Chonburi, serif'; g.fillText(`คอมโบ ${n}`, w / 2, 86);
+  });
+  comboMat.needsUpdate = true;
+  if (n > 0) comboPop = 1;
+  updateHud();
+}
 const guides = [];
-function addGuide(key, t, bus) {
+function addGuide(key, t, bus, vel) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: GUIDE_COLORS[key % 7], transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   s.visible = false; ranat.add(s);
-  guides.push({ key, t, bus, s, done: null, doneT: 0 });
+  guides.push({ key, t, bus, vel, s, done: null, doneT: 0, leveled: false });
 }
 function updateGuides() {
+  comboPop *= Math.pow(0.02, dt);
+  comboMat.opacity = lerp(comboMat.opacity, mode === 'guide' && state === 'build' && combo >= 3 ? 1 : 0, Math.min(1, dt * 8));
+  comboSprite.scale.set(0.5 * (1 + comboPop * 0.25), 0.17 * (1 + comboPop * 0.25), 1);
   keys.forEach(k => { k.userData.guide = 0; });
   if (!ac) return;
   const at = ac.currentTime;
   for (let i = guides.length - 1; i >= 0; i--) {
     const g = guides[i], k = keys[g.key], top = k.userData.y0 + 0.012;
     if (!g.done && (mode !== 'guide' || state !== 'build')) { g.done = 'cancel'; g.doneT = at; }
-    if (!g.done && at > g.t + HIT_WIN) { g.done = 'miss'; g.doneT = at; }
+    if (!g.done && at > g.t + HIT_WIN) { g.done = 'miss'; g.doneT = at; if (combo) setCombo(0); }
     if (g.done) {
       const e = (at - g.doneT) / 0.4;
       if (g.done === 'hit' || e >= 1) { ranat.remove(g.s); g.s.material.dispose(); guides.splice(i, 1); continue; }
@@ -923,8 +955,11 @@ function judge(i) {
   if (!best) return null;
   best.done = 'hit';
   const perfect = Math.abs(best.t - at) <= PERFECT_WIN;
-  burst(keyWorld(i), perfect ? 0.55 : 0.35, perfect ? 0.5 : 0.35);
+  setCombo(combo + 1);
+  const grow = 1 + comboLevel() * 0.6; // bursts swell with the combo
+  burst(keyWorld(i), (perfect ? 0.55 : 0.35) * grow, (perfect ? 0.5 : 0.35) * grow);
   if (perfect) ripple(0.9);
+  if (combo % 10 === 0) { ripple(1.4); goldPulse = 1; } // every 10 in a row the hall flashes gold
   buildNext(i);
   return best;
 }
@@ -989,7 +1024,7 @@ let state = 'idle', stateT = 0, nextBuild = 0, builtCount = 0, lastPieceEnd = 0,
 const PIECE_DUR = 0.95, FLY = 0.45;
 const FAST = new URLSearchParams(location.search).has('fast'); // debug: one piece per note
 
-function setState(s) { state = s; stateT = now; updateHud(); }
+function setState(s) { state = s; stateT = now; if (s === 'void' && combo) setCombo(0); updateHud(); }
 function buildNext(fromKey) {
   if (state !== 'build' || nextBuild >= N) return;
   const p = pieces[nextBuild++];
@@ -1075,7 +1110,7 @@ function strike(i, vel = 1.1) {
   if (!ac || i < 0) return;
   const g = mode === 'guide' && state === 'build' ? judge(i) : null;
   if (g && g.bus) {
-    if (g.t > ac.currentTime) g.bus.gain.setValueAtTime(0, ac.currentTime); // struck before the teacher's note: replace it
+    if (g.t > ac.currentTime) { g.bus.gain.cancelScheduledValues(ac.currentTime); g.bus.gain.setValueAtTime(0, ac.currentTime); } // struck before the teacher's note: replace it
     else vel *= 0.35; // the teacher already played this beat: add a light accent, not a second full note
   }
   playRanat(i, ac.currentTime, vel);
@@ -1245,7 +1280,7 @@ const HINT_TEXT = {
 const modeBtn = document.getElementById('modeBtn');
 const STATE_TEXT = { idle: '', void: 'ความว่างเปล่า… เสียงกำลังมา', build: 'เสียงกำลังก่อร่างวิหาร', complete: 'วิหารแห่งเสียงสมบูรณ์', dissolve: 'เสียงจางหาย วิหารคืนสู่แสง' };
 function updateHud() {
-  hudState.textContent = state === 'build' ? `${mode === 'guide' ? 'บรรเลงตามโน้ต' : STATE_TEXT.build} · ${builtCount}/${N}` : STATE_TEXT[state];
+  hudState.textContent = state === 'build' ? `${mode === 'guide' ? 'บรรเลงตามโน้ต' : STATE_TEXT.build} · ${builtCount}/${N}${mode === 'guide' && combo >= 3 ? ` · คอมโบ ${combo}` : ''}` : STATE_TEXT[state];
   hudBar.style.width = `${(state === 'complete' ? 1 : state === 'dissolve' || state === 'void' ? 0 : builtCount / N) * 100}%`;
 }
 let hintTimer = null;
