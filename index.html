@@ -821,12 +821,15 @@ const ctrlMat = new THREE.Matrix4();
 for (let c = 0; c < 2; c++) {
   const ctrl = renderer.xr.getController(c);
   const grip = renderer.xr.getControllerGrip(c);
+  const xrHand = renderer.xr.getHand(c); // hand tracking: no grip pose, so follow the wrist instead
+  // the mallet hangs off an anchor that copies whichever pose is available each frame
+  const anchor = new THREE.Group(); anchor.matrixAutoUpdate = false; anchor.visible = false;
   const m = makeMallet();
-  grip.add(m.g);
-  const hand = { ...m, ctrl, grip, source: null, prev: new V3(), cur: new V3(), local: new V3(), prevLocal: new V3(), ready: false, lastHit: -1, lastHitT: 0, glow: 0 };
+  anchor.add(m.g);
+  const hand = { ...m, ctrl, grip, xrHand, anchor, source: null, prev: new V3(), cur: new V3(), local: new V3(), prevLocal: new V3(), ready: false, lastHit: -1, lastHitT: 0, glow: 0 };
   mallets.push(hand);
   ctrl.addEventListener('connected', e => { hand.source = e.data; hand.ready = false; });
-  ctrl.addEventListener('disconnected', () => { hand.source = null; });
+  ctrl.addEventListener('disconnected', () => { hand.source = null; anchor.visible = false; });
   ctrl.addEventListener('selectstart', () => {
     ctrlMat.identity().extractRotation(ctrl.matrixWorld);
     raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
@@ -834,7 +837,19 @@ for (let c = 0; c < 2; c++) {
     const i = hitKeysFromRay();
     if (i >= 0) { strike(i); buzz(hand, 0.5, 30); }
   });
-  rig.add(ctrl); rig.add(grip);
+  rig.add(ctrl); rig.add(grip); rig.add(xrHand); rig.add(anchor);
+}
+
+// from the wrist joint to where a fist would close around the stick
+const WRIST_TO_FIST = new THREE.Matrix4().makeTranslation(0, -0.02, -0.07);
+function placeMallet(h) {
+  const wrist = h.xrHand.joints && h.xrHand.joints['wrist'];
+  if (h.grip.visible) h.anchor.matrix.copy(h.grip.matrix);
+  else if (wrist && wrist.visible) h.anchor.matrix.multiplyMatrices(wrist.matrix, WRIST_TO_FIST);
+  else { h.anchor.visible = false; return false; }
+  h.anchor.visible = true;
+  h.anchor.updateMatrixWorld(true);
+  return true;
 }
 
 function buzz(hand, intensity, ms) {
@@ -850,7 +865,7 @@ function updateMallets() {
   for (const h of mallets) {
     h.glow *= Math.pow(0.01, dt);
     h.headMat.emissiveIntensity = h.glow;
-    if (!h.source) continue;
+    if (!h.source || !placeMallet(h)) { h.ready = false; continue; }
     h.head.getWorldPosition(h.cur);
     h.local.copy(h.cur); ranat.worldToLocal(h.local);
     if (!h.ready) { h.prev.copy(h.cur); h.prevLocal.copy(h.local); h.ready = true; continue; }
