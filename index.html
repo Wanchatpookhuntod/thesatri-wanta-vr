@@ -150,7 +150,8 @@ const heartLight = new THREE.PointLight(0xffb45e, 0.5, 0, 1);
 heartLight.position.set(0, 9, 0);
 scene.add(heartLight);
 const lowLight = new THREE.PointLight(0xff9a4a, 0.6, 0, 1.4);
-lowLight.position.set(0, 1.2, -1.2);
+const LOW_LIGHT = new V3(0, 1.2, -1.2);
+lowLight.position.copy(LOW_LIGHT);
 scene.add(lowLight);
 
 /* =====================================================================
@@ -775,7 +776,8 @@ function ripple(strength = 1) {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 128), new THREE.MeshBasicMaterial({
     color: 0xd98a3a, transparent: true, opacity: 0.3 * strength, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
   }));
-  m.rotation.x = -Math.PI / 2; m.position.y = builtCount > 2 ? 0.03 : -1.2;
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(rig.position.x, mode === 'guide' ? rig.position.y + 0.03 : builtCount > 2 ? 0.03 : -1.2, rig.position.z);
   scene.add(m);
   fx.push({ kind: 'ripple', m, t0: now, dur: 3.2, o: 0.3 * strength });
 }
@@ -844,12 +846,16 @@ function dissolveAll() {
     p.state = 'out'; p.burst = false; p.t0 = now + j * 0.07;
   }
 }
+// where the player stands: in the middle of the hall to watch, or out in front on the mirror floor
+// when playing, so the whole hall rises ahead of them while they play
+const STAGE = { auto: new V3(0, 0, 0), guide: new V3(0, -1.25, 34) };
 function setMode(m) {
   if (m === mode) return;
   mode = m;
   modeBtn.textContent = mode === 'guide' ? '✨ ชมการบรรเลง' : '🎵 บรรเลงตามโน้ต';
   hint.textContent = HINT_TEXT[mode]; hint.style.opacity = 1; hideHintSoon();
   drawPlaque();
+  rig.position.copy(STAGE[mode]);
   if (state === 'build' || state === 'complete') dissolveAll(); // start the hall over in the new mode
   updateHud();
 }
@@ -1112,7 +1118,10 @@ renderer.setAnimationLoop(() => {
     k.material.emissive.copy(KEY_GLOW).lerp(GUIDE_COLORS[u.i % 7], u.guide / (u.guide + u.flash + 1e-3));
     k.position.y = u.y0 - u.flash * 0.008;
   });
-  ranat.position.set(ranatBase.x, ranatBase.y + Math.sin(now * 0.8) * (renderer.xr.isPresenting ? 0.003 : 0.012), ranatBase.z);
+  ranat.position.copy(rig.position).add(ranatBase);
+  ranat.position.y += Math.sin(now * 0.8) * (renderer.xr.isPresenting ? 0.003 : 0.012);
+  lowLight.position.copy(rig.position).add(LOW_LIGHT);
+  lotus.position.set(rig.position.x, rig.position.y + 0.012, rig.position.z);
   updateMallets();
 
   const prog = state === 'complete' ? 1 : state === 'build' ? builtCount / N : state === 'dissolve' ? 0.6 : 0;
