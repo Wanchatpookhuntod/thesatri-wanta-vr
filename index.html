@@ -719,7 +719,7 @@ for (let i = 0; i < KEYS; i++) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.024, len),
     new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.06, 0.55, 0.16 + (i % 2) * 0.02), roughness: 0.45, metalness: 0.05, emissive: 0xffb050, emissiveIntensity: 0 }));
   m.position.set(x, 0.06 * Math.pow(x / 0.5, 2) + 0.012, 0);
-  m.userData = { i, y0: m.position.y, flash: 0 };
+  m.userData = { i, y0: m.position.y, flash: 0, hit: 0, guide: 0 };
   ranat.add(m); keys.push(m);
 }
 const keyWorld = i => keys[i].getWorldPosition(new V3());
@@ -799,6 +799,12 @@ function playRanat(i, t = ac.currentTime, vel = 1) {
   partial(bus, f * 5.4, 0.12, 0.08, t);
   noiseHit(bus, t, 2600, 1.2, 0.35, 0.025);
   return bus;
+}
+// a bright bell on top of the struck note confirms a hit by ear; a perfect hit adds the fifth above
+function playChime(i, perfect) {
+  const t = ac.currentTime, bus = ac.createGain(); bus.gain.value = 0.07; out(bus, 1, 1);
+  partial(bus, keyFreq(i) * 4, 1, 0.4, t);
+  if (perfect) partial(bus, keyFreq(i) * 6, 0.7, 0.5, t);
 }
 function playGong(i, t) {
   const f = keyFreq(i) / 2, bus = ac.createGain(); bus.gain.value = 0.22; out(bus, 1, 1.1);
@@ -897,15 +903,18 @@ const teacherLevel = () => lerp(0.55, 0.2, comboLevel());
 const accompaniment = soft => soft ? 1 - 0.6 * comboLevel() : 1;
 const comboMat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false, fog: false });
 const comboSprite = new THREE.Sprite(comboMat);
-comboSprite.scale.set(0.5, 0.17, 1); comboSprite.position.set(-0.86, 0.12, 0.02); // beside the ranat, out of the guides' path
+comboSprite.scale.set(0.5, 0.21, 1); comboSprite.position.set(-0.86, 0.14, 0.02); // beside the ranat, out of the guides' path
 ranat.add(comboSprite);
 let comboPop = 0;
-function setCombo(n) {
+let judgeT = -9;
+function setCombo(n, word = '') {
   combo = n; bestCombo = Math.max(bestCombo, n);
+  if (word) judgeT = now;
   if (comboMat.map) comboMat.map.dispose();
-  comboMat.map = canvasTex(384, 128, (g, w, h) => {
+  comboMat.map = canvasTex(384, 160, (g, w, h) => {
     g.textAlign = 'center'; g.shadowColor = 'rgba(255,170,60,.9)'; g.shadowBlur = 18;
-    g.fillStyle = '#fff1c9'; g.font = '64px Chonburi, serif'; g.fillText(`คอมโบ ${n}`, w / 2, 86);
+    if (word) { g.fillStyle = word === 'ดี' ? '#ffe7b0' : '#ffffff'; g.font = '600 46px Sarabun, sans-serif'; g.fillText(word, w / 2, 52); }
+    if (n >= 3) { g.fillStyle = '#fff1c9'; g.font = '62px Chonburi, serif'; g.fillText(`คอมโบ ${n}`, w / 2, 130); }
   });
   comboMat.needsUpdate = true;
   if (n > 0) comboPop = 1;
@@ -919,8 +928,8 @@ function addGuide(key, t, bus, vel) {
 }
 function updateGuides() {
   comboPop *= Math.pow(0.02, dt);
-  comboMat.opacity = lerp(comboMat.opacity, mode === 'guide' && state === 'build' && combo >= 3 ? 1 : 0, Math.min(1, dt * 8));
-  comboSprite.scale.set(0.5 * (1 + comboPop * 0.25), 0.17 * (1 + comboPop * 0.25), 1);
+  comboMat.opacity = lerp(comboMat.opacity, mode === 'guide' && state === 'build' && (combo >= 3 || now - judgeT < 0.6) ? 1 : 0, Math.min(1, dt * 8));
+  comboSprite.scale.set(0.5 * (1 + comboPop * 0.25), 0.21 * (1 + comboPop * 0.25), 1);
   keys.forEach(k => { k.userData.guide = 0; });
   if (!ac) return;
   const at = ac.currentTime;
@@ -955,8 +964,10 @@ function judge(i) {
   if (!best) return null;
   best.done = 'hit';
   const perfect = Math.abs(best.t - at) <= PERFECT_WIN;
-  setCombo(combo + 1);
-  hitFlame(keyWorld(i), perfect);
+  setCombo(combo + 1, perfect ? 'ตรงจังหวะ!' : 'ดี');
+  hitFlame(i, perfect);
+  keys[i].userData.hit = perfect ? 1.4 : 1;
+  playChime(i, perfect);
   if (perfect) ripple(0.9);
   if (combo % 10 === 0) { ripple(1.4); goldPulse = 1; } // every 10 in a row the hall flashes gold
   buildNext(i);
@@ -985,9 +996,15 @@ function burst(pos, size, spread = 1) {
 }
 // Guitar Hero style hit feedback: a brief white-gold flame that rises a few cm from the key and is gone in
 // 0.25 s, before the next note lands, and never flies up into the path of the falling guide lights
-function hitFlame(pos, perfect) {
-  const size = perfect ? 0.17 : 0.12;
+// plus a flat ring in the key's colour that spreads across the key top, so the hit reads clearly
+function hitFlame(i, perfect) {
+  const pos = keyWorld(i), size = perfect ? 0.26 : 0.2;
   fx.push({ kind: 'flame', s: sprite(pos, size, 0xfff4dc), t0: now, dur: 0.25, size });
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.022, 0.03, 40), new THREE.MeshBasicMaterial({
+    color: GUIDE_COLORS[i % 7], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+  m.rotation.x = -Math.PI / 2; m.position.copy(pos).y += 0.016;
+  scene.add(m);
+  fx.push({ kind: 'ring', m, t0: now, dur: 0.3, grow: perfect ? 5 : 3.8 });
 }
 function sparkle(pos) {
   fx.push({ kind: 'spark', s: sprite(pos, 0.12), v: new V3((Math.random() - .5) * .3, 0.9 + Math.random() * .6, (Math.random() - .5) * .3), t0: now, dur: 1.4 });
@@ -1018,6 +1035,8 @@ function updateFx() {
       e.s.position.addScaledVector(e.v, dt); e.v.multiplyScalar(0.97); e.s.material.opacity = 1 - t;
     } else if (e.kind === 'flame') {
       e.s.position.y += dt * 0.3; e.s.scale.setScalar(e.size * (1 - t * 0.5)); e.s.material.opacity = 1 - t * t;
+    } else if (e.kind === 'ring') {
+      e.m.scale.setScalar(lerp(1, e.grow, easeOutCubic(t))); e.m.material.opacity = 1 - t;
     } else if (e.kind === 'ripple') {
       e.m.scale.setScalar(0.6 + easeOutCubic(t) * 26); e.m.material.opacity = e.o * (1 - t);
     }
@@ -1128,6 +1147,7 @@ function strike(i, vel = 1.1) {
   else { sparkle(keyWorld(i)); sparkle(keyWorld(i)); }
   ripple(0.5);
   hideHintSoon();
+  return g;
 }
 let down = null;
 renderer.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: 0 }; });
@@ -1208,7 +1228,7 @@ for (let c = 0; c < 2; c++) {
     raycaster.ray.direction.set(0, 0, -1).applyMatrix4(ctrlMat);
     if (hitsPlaque()) { toggleMode(); buzz(hand, 0.6, 60); return; }
     const i = hitKeysFromRay();
-    if (i >= 0) { strike(i); buzz(hand, 0.5, 30); }
+    if (i >= 0) { if (strike(i)) buzz(hand, 1, 70); else buzz(hand, 0.4, 25); }
   });
   rig.add(ctrl); rig.add(grip); rig.add(xrHand); rig.add(anchor);
 }
@@ -1255,8 +1275,8 @@ function updateMallets() {
         if (Math.abs(x - k.position.x) > KEY_HALF_W + HEAD_R * 0.5 || Math.abs(z - k.position.z) > halfLen) continue;
         if (u.i === h.lastHit && now - h.lastHitT < 0.08) break;
         const vel = Math.min(1.6, 0.45 + speed * 0.32);
-        strike(u.i, vel);
-        buzz(h, 0.2 + vel * 0.45, 18 + vel * 20);
+        // a strong, longer pulse when the strike lands on a guide's beat, a light tap otherwise
+        if (strike(u.i, vel)) buzz(h, 1, 70); else buzz(h, 0.15 + vel * 0.3, 16 + vel * 14);
         h.glow = 0.6 + vel * 0.6;
         h.lastHit = u.i; h.lastHitT = now;
         break;
@@ -1343,9 +1363,11 @@ renderer.setAnimationLoop(() => {
   keys.forEach(k => {
     const u = k.userData;
     u.flash *= Math.pow(0.02, dt);
-    k.material.emissiveIntensity = u.flash * 0.9 + u.guide * 0.6;
-    k.material.emissive.copy(KEY_GLOW).lerp(GUIDE_COLORS[u.i % 7], u.guide / (u.guide + u.flash + 1e-3));
-    k.position.y = u.y0 - u.flash * 0.008;
+    u.hit *= Math.pow(0.002, dt); // a hit lights the key in its colour for about a third of a second
+    k.material.emissiveIntensity = u.flash * 0.9 + u.guide * 0.6 + u.hit * 1.8;
+    const c = u.guide + u.hit * 3;
+    k.material.emissive.copy(KEY_GLOW).lerp(GUIDE_COLORS[u.i % 7], c / (c + u.flash + 1e-3));
+    k.position.y = u.y0 - u.flash * 0.008 - u.hit * 0.01;
   });
   ranat.position.copy(rig.position).add(ranatBase);
   ranat.position.y += Math.sin(now * 0.8) * (renderer.xr.isPresenting ? 0.003 : 0.012);
