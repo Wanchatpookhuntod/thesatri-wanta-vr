@@ -38,6 +38,10 @@
     padding: 15px 34px; background: linear-gradient(180deg, #ffe7a8, #d3a052);
     box-shadow: 0 0 0 1px rgba(255,235,180,.5), 0 10px 40px rgba(233,170,80,.35); transition: transform .2s, box-shadow .2s; }
   #startBtn:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,235,180,.7), 0 14px 50px rgba(233,170,80,.5); }
+  .start-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  #guideBtn { font: 600 17px "Sarabun", sans-serif; color: var(--gold-hi); cursor: pointer; border-radius: 999px; padding: 14px 30px;
+    background: rgba(10,6,18,.4); border: 1px solid var(--gold); transition: transform .2s, background .2s; }
+  #guideBtn:hover { transform: translateY(-1px); background: rgba(233,194,122,.12); }
   .tips { margin-top: 26px; font-size: 13px; color: var(--muted); line-height: 1.8; }
   .credit { position: fixed; bottom: 18px; left: 0; right: 0; font-size: 12px; color: rgba(239,230,214,.4); }
 
@@ -75,8 +79,11 @@
     <div class="sub">อาจาริยัง ประสิทธิ</div>
     <p class="lede">เมื่อเสียงดนตรีถวายครูดังขึ้น ทุกตัวโน้ตจะกลายเป็นเสา หลังคา และช่อฟ้า
       ก่อร่างเป็นวิหารทองขึ้นรอบตัวคุณ ลองแตะลูกระนาดเพื่อร่วมบรรเลงและสร้างวิหารไปด้วยกัน</p>
-    <button id="startBtn">เข้าสู่โลกแห่งเสียง</button>
-    <div class="tips">🎧 ใส่หูฟังเพื่อประสบการณ์ที่ดีที่สุด<br>หมุนมือถือหรือลากหน้าจอเพื่อมองรอบตัว</div>
+    <div class="start-btns">
+      <button id="startBtn">เข้าสู่โลกแห่งเสียง</button>
+      <button id="guideBtn">บรรเลงตามโน้ต</button>
+    </div>
+    <div class="tips">🎧 ใส่หูฟังเพื่อประสบการณ์ที่ดีที่สุด<br>บรรเลงตามโน้ต: ตีลูกระนาดตอนที่ดวงแสงตกลงถึง ตีตรงจังหวะแล้ววิหารจะก่อร่าง<br>หมุนมือถือหรือลากหน้าจอเพื่อมองรอบตัว</div>
   </div>
   <div class="credit">สำนักศิลปะและวัฒนธรรม มหาวิทยาลัยราชภัฏเทพสตรี · ต้นแบบ (prototype)</div>
 </div>
@@ -89,6 +96,7 @@
       <div class="bar"><i id="hudBar"></i></div>
     </div>
     <div class="hud-btns">
+      <button class="chip" id="modeBtn">🎵 บรรเลงตามโน้ต</button>
       <button class="chip" id="muteBtn">🔊 เสียง</button>
     </div>
   </div>
@@ -533,6 +541,37 @@ for (let i = 0; i < KEYS; i++) {
 }
 const keyWorld = i => keys[i].getWorldPosition(new V3());
 
+// 'auto': the ranat plays and builds by itself. 'guide': falling lights show which key to strike on the beat,
+// a teacher plays the melody softly, and only the player's on-beat strikes build the hall.
+let mode = new URLSearchParams(location.search).get('mode') === 'guide' ? 'guide' : 'auto';
+
+// ป้ายเปลี่ยนโหมด beside the ranat: strike or click it to switch between watching and playing along
+const plaqueMat = new THREE.MeshBasicMaterial({ transparent: true, fog: false });
+const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.12), plaqueMat);
+plaque.position.set(0.82, 0.08, 0.02); plaque.rotation.set(-0.5, -0.35, 0);
+ranat.add(plaque);
+function drawPlaque() {
+  if (plaqueMat.map) plaqueMat.map.dispose();
+  plaqueMat.map = canvasTex(512, 205, (g, w, h) => {
+    g.fillStyle = 'rgba(14,8,22,.88)'; g.strokeStyle = '#e9c27a'; g.lineWidth = 4;
+    g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 26); g.fill(); g.stroke();
+    g.textAlign = 'center'; g.fillStyle = '#fff1c9';
+    g.font = '52px Chonburi, serif'; g.fillText(mode === 'guide' ? 'บรรเลงตามโน้ต' : 'ชมการบรรเลง', w / 2, 98);
+    g.fillStyle = 'rgba(239,230,214,.7)';
+    g.font = '30px Sarabun, sans-serif'; g.fillText('ตีป้ายนี้เพื่อเปลี่ยนโหมด', w / 2, 160);
+  });
+  plaqueMat.needsUpdate = true;
+}
+drawPlaque();
+document.fonts.load('52px Chonburi').finally(drawPlaque);
+let lastToggle = -9;
+function toggleMode() {
+  if (now - lastToggle < 1) return;
+  lastToggle = now;
+  setMode(mode === 'guide' ? 'auto' : 'guide');
+}
+const hitsPlaque = () => raycaster.intersectObject(plaque, false).length > 0;
+
 /* =====================================================================
    Audio — synthesised ระนาด, ฆ้อง, ฉิ่ง tuned to Thai 7-tone equal temperament
    ===================================================================== */
@@ -601,21 +640,27 @@ let nextT = 0, step = 0, phraseIdx = 0, posInPhrase = 0, lastKey = 4, buildTick 
 const events = [];
 
 function stepDur() {
-  if (state === 'build') return lerp(0.44, 0.21, smooth(builtCount / N));
+  if (state === 'build') return mode === 'guide' ? lerp(0.5, 0.4, smooth(builtCount / N)) : lerp(0.44, 0.21, smooth(builtCount / N));
   if (state === 'complete') return 0.21;
   if (state === 'dissolve') return 0.27;
   return 0.4;
 }
 function scheduleStep(t) {
   const n = PHRASES[phraseIdx][posInPhrase], d = stepDur();
+  const soft = mode === 'guide' && state === 'build';
   if (n >= 0) {
     const k = P[n]; lastKey = k;
-    playRanat(k, t, 1); events.push({ t, type: 'note', key: k, build: true });
-    if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
+    if (soft && step % 2 === 0) {
+      playRanat(k, t, 0.3); events.push({ t, type: 'note', key: k, soft });
+      addGuide(k, t);
+    } else {
+      playRanat(k, t, soft ? 0.5 : 1); events.push({ t, type: 'note', key: k, build: !soft, soft });
+      if (!soft && step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
+    }
   } else {
     for (let r = 0; r < 4; r++) {
       const tt = t + (r * d) / 4, kk = r % 2 ? Math.min(KEYS - 1, lastKey + 7) : lastKey;
-      playRanat(kk, tt, 0.45); events.push({ t: tt, type: 'note', key: kk });
+      playRanat(kk, tt, soft ? 0.3 : 0.45); events.push({ t: tt, type: 'note', key: kk, soft });
     }
   }
   if (step % 2 === 0) playChing(t, (step / 2) % 2 === 0);
@@ -625,8 +670,61 @@ function scheduleStep(t) {
 }
 setInterval(() => {
   if (!ac || state === 'idle') return;
-  while (nextT < ac.currentTime + 0.12) { scheduleStep(nextT); nextT += stepDur(); }
+  // guide mode looks further ahead so each guide light can start falling before its note
+  const lead = mode === 'guide' ? APPROACH + 0.2 : 0.12;
+  while (nextT < ac.currentTime + lead) { scheduleStep(nextT); nextT += stepDur(); }
 }, 25);
+
+/* =====================================================================
+   Guide lights: each falls onto its key and lands exactly on the beat
+   ===================================================================== */
+const APPROACH = 1.6, HIT_WIN = 0.2, PERFECT_WIN = 0.08, DROP = 0.45;
+const guides = [];
+function addGuide(key, t) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xfff0c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  s.visible = false; ranat.add(s);
+  guides.push({ key, t, s, done: null, doneT: 0 });
+}
+function updateGuides() {
+  keys.forEach(k => { k.userData.guide = 0; });
+  if (!ac) return;
+  const at = ac.currentTime;
+  for (let i = guides.length - 1; i >= 0; i--) {
+    const g = guides[i], k = keys[g.key], top = k.userData.y0 + 0.012;
+    if (!g.done && (mode !== 'guide' || state !== 'build')) { g.done = 'cancel'; g.doneT = at; }
+    if (!g.done && at > g.t + HIT_WIN) { g.done = 'miss'; g.doneT = at; }
+    if (g.done) {
+      const e = (at - g.doneT) / 0.4;
+      if (g.done === 'hit' || e >= 1) { ranat.remove(g.s); g.s.material.dispose(); guides.splice(i, 1); continue; }
+      g.s.material.color.setHex(0x8a7aa8); g.s.material.opacity = 0.5 * (1 - e); g.s.position.y -= dt * 0.3;
+      continue;
+    }
+    const u = 1 - (g.t - at) / APPROACH; // 0 when it appears, 1 on the beat
+    if (u < 0) continue;
+    g.s.visible = true;
+    g.s.position.set(k.position.x, top + 0.012 + DROP * Math.max(0, 1 - u), k.position.z);
+    g.s.scale.setScalar(lerp(0.07, 0.15, Math.min(u, 1)));
+    g.s.material.opacity = Math.min(1, u * 4);
+    k.userData.guide = Math.max(k.userData.guide, Math.min(u, 1));
+  }
+}
+// returns true when the strike landed on a guide's beat
+function judge(i) {
+  if (state !== 'build') return false;
+  const at = ac.currentTime;
+  let best = null;
+  for (const g of guides) {
+    if (g.done || g.key !== i || Math.abs(g.t - at) > HIT_WIN) continue;
+    if (!best || Math.abs(g.t - at) < Math.abs(best.t - at)) best = g;
+  }
+  if (!best) return false;
+  best.done = 'hit';
+  const perfect = Math.abs(best.t - at) <= PERFECT_WIN;
+  burst(keyWorld(i), perfect ? 0.9 : 0.5);
+  if (perfect) ripple(0.9);
+  buildNext(i);
+  return true;
+}
 
 /* =====================================================================
    Light: trails from key to piece, bursts, sparkles, ripples
@@ -715,13 +813,28 @@ function updatePieces() {
     }
   }
 }
+function dissolveAll() {
+  setState('dissolve');
+  for (let i = N - 1, j = 0; i >= 0; i--, j++) {
+    const p = pieces[i];
+    if (p.state === 'hidden' || p.state === 'gone') continue;
+    p.state = 'out'; p.burst = false; p.t0 = now + j * 0.07;
+  }
+}
+function setMode(m) {
+  if (m === mode) return;
+  mode = m;
+  modeBtn.textContent = mode === 'guide' ? '✨ ชมการบรรเลง' : '🎵 บรรเลงตามโน้ต';
+  hint.textContent = HINT_TEXT[mode]; hint.style.opacity = 1; hideHintSoon();
+  drawPlaque();
+  if (state === 'build' || state === 'complete') dissolveAll(); // start the hall over in the new mode
+  updateHud();
+}
 function stepState() {
   if (state === 'void' && now - stateT > 3) setState('build');
   else if (state === 'build' && nextBuild >= N && now > lastPieceEnd + 0.3) { setState('complete'); goldPulse = 1.5; }
-  else if (state === 'complete' && now - stateT > 18) {
-    setState('dissolve');
-    for (let i = N - 1, j = 0; i >= 0; i--, j++) { const p = pieces[i]; p.state = 'out'; p.burst = false; p.t0 = now + j * 0.07; }
-  } else if (state === 'dissolve' && now - stateT > N * 0.07 + 1.2) {
+  else if (state === 'complete' && now - stateT > 18) dissolveAll();
+  else if (state === 'dissolve' && now - stateT > N * 0.07 + 1.2) {
     pieces.forEach(p => { p.state = 'hidden'; p.w.visible = false; p.w.position.copy(p.c); p.w.scale.setScalar(1); });
     nextBuild = 0; builtCount = 0; buildTick = 0;
     setState('void');
@@ -729,8 +842,9 @@ function stepState() {
 }
 function fire(ev) {
   if (ev.type === 'note') {
+    if (ev.soft) { flashKey(ev.key, 0.2); return; }
     flashKey(ev.key, ev.build ? 1 : 0.6);
-    if (ev.build && state === 'build' && (FAST || ++buildTick % 2 === 0)) buildNext(ev.key);
+    if (ev.build && mode === 'auto' && state === 'build' && (FAST || ++buildTick % 2 === 0)) buildNext(ev.key);
     else if (Math.random() < 0.5) sparkle(keyWorld(ev.key));
   } else if (ev.type === 'gong') {
     ripple(state === 'complete' ? 1.4 : 0.8);
@@ -752,7 +866,8 @@ function strike(i, vel = 1.1) {
   if (!ac || i < 0) return;
   playRanat(i, ac.currentTime, vel);
   flashKey(i, 0.5 + vel * 0.8);
-  if (state === 'build') buildNext(i);
+  if (mode === 'guide' && state === 'build') judge(i);
+  else if (state === 'build') buildNext(i);
   else { sparkle(keyWorld(i)); sparkle(keyWorld(i)); }
   ripple(0.5);
   hideHintSoon();
@@ -769,7 +884,7 @@ addEventListener('pointermove', e => {
 addEventListener('pointerup', e => {
   if (down && down.moved < 8) {
     raycaster.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    strike(hitKeysFromRay());
+    if (hitsPlaque()) toggleMode(); else strike(hitKeysFromRay());
   }
   down = null;
 });
@@ -834,6 +949,7 @@ for (let c = 0; c < 2; c++) {
     ctrlMat.identity().extractRotation(ctrl.matrixWorld);
     raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
     raycaster.ray.direction.set(0, 0, -1).applyMatrix4(ctrlMat);
+    if (hitsPlaque()) { toggleMode(); buzz(hand, 0.6, 60); return; }
     const i = hitKeysFromRay();
     if (i >= 0) { strike(i); buzz(hand, 0.5, 30); }
   });
@@ -865,7 +981,7 @@ function updateMallets() {
   for (const h of mallets) {
     h.glow *= Math.pow(0.01, dt);
     h.headMat.emissiveIntensity = h.glow;
-    if (!h.source || !placeMallet(h)) { h.ready = false; continue; }
+    if (!h.source || !placeMallet(h)) { h.ready = false; h.prevPl = null; continue; }
     h.head.getWorldPosition(h.cur);
     h.local.copy(h.cur); ranat.worldToLocal(h.local);
     if (!h.ready) { h.prev.copy(h.cur); h.prevLocal.copy(h.local); h.ready = true; continue; }
@@ -889,6 +1005,11 @@ function updateMallets() {
         break;
       }
     }
+    const pl = plaque.worldToLocal(h.cur.clone());
+    if (h.prevPl && h.prevPl.z > HEAD_R && pl.z <= HEAD_R && Math.abs(pl.x) < 0.17 && Math.abs(pl.y) < 0.08 && speed > 0.3) {
+      toggleMode(); buzz(h, 0.6, 60);
+    }
+    h.prevPl = pl;
     h.prev.copy(h.cur); h.prevLocal.copy(h.local);
   }
 }
@@ -904,9 +1025,14 @@ renderer.xr.addEventListener('sessionend', () => { ranatBase.copy(RANAT_SCREEN);
    ===================================================================== */
 const intro = document.getElementById('intro'), hud = document.getElementById('hud');
 const hudState = document.getElementById('hudState'), hudBar = document.getElementById('hudBar'), hint = document.getElementById('hint');
+const HINT_TEXT = {
+  auto: 'แตะลูกระนาดเพื่อร่วมบรรเลง · ลากเพื่อมองรอบตัว',
+  guide: 'ตีลูกระนาดตอนที่ดวงแสงตกลงถึง · ตรงจังหวะแล้ววิหารจะก่อร่าง',
+};
+const modeBtn = document.getElementById('modeBtn');
 const STATE_TEXT = { idle: '', void: 'ความว่างเปล่า… เสียงกำลังมา', build: 'เสียงกำลังก่อร่างวิหาร', complete: 'วิหารแห่งเสียงสมบูรณ์', dissolve: 'เสียงจางหาย วิหารคืนสู่แสง' };
 function updateHud() {
-  hudState.textContent = state === 'build' ? `${STATE_TEXT.build} · ${builtCount}/${N}` : STATE_TEXT[state];
+  hudState.textContent = state === 'build' ? `${mode === 'guide' ? 'บรรเลงตามโน้ต' : STATE_TEXT.build} · ${builtCount}/${N}` : STATE_TEXT[state];
   hudBar.style.width = `${(state === 'complete' ? 1 : state === 'dissolve' || state === 'void' ? 0 : builtCount / N) * 100}%`;
 }
 let hintTimer = null;
@@ -925,6 +1051,9 @@ async function start() {
   setTimeout(() => { hint.style.opacity = 0.0; }, 22000);
 }
 document.getElementById('startBtn').addEventListener('click', start);
+document.getElementById('guideBtn').addEventListener('click', () => { setMode('guide'); start(); });
+modeBtn.addEventListener('click', toggleMode);
+if (mode === 'guide') { mode = 'auto'; setMode('guide'); } // sync the labels when opened with ?mode=guide
 document.getElementById('muteBtn').addEventListener('click', e => {
   muted = !muted; if (master) master.gain.value = muted ? 0 : 0.85;
   e.currentTarget.textContent = muted ? '🔇 ปิดเสียง' : '🔊 เสียง';
@@ -952,10 +1081,11 @@ renderer.setAnimationLoop(() => {
   updateFx();
   applyLook();
 
+  updateGuides();
   keys.forEach(k => {
     const u = k.userData;
     u.flash *= Math.pow(0.02, dt);
-    k.material.emissiveIntensity = u.flash * 0.9;
+    k.material.emissiveIntensity = u.flash * 0.9 + u.guide * 0.45;
     k.position.y = u.y0 - u.flash * 0.008;
   });
   ranat.position.set(ranatBase.x, ranatBase.y + Math.sin(now * 0.8) * (renderer.xr.isPresenting ? 0.003 : 0.012), ranatBase.z);
