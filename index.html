@@ -1,0 +1,888 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>เมืองที่สร้างจากเสียง</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chonburi&family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06040c;
+    --gold: #e9c27a;
+    --gold-hi: #fff1c9;
+    --gold-dim: rgba(233, 194, 122, .35);
+    --text: #efe6d6;
+    --muted: rgba(239, 230, 214, .62);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: "Sarabun", system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  #app canvas { display: block; touch-action: none; }
+
+  /* ---------- intro overlay ---------- */
+  #intro { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px 16px;
+    background: radial-gradient(ellipse at 50% 40%, #1b1030 0%, #08050f 60%, #030207 100%);
+    transition: opacity 1.4s ease, visibility 1.4s; text-align: center; }
+  #intro.hide { opacity: 0; visibility: hidden; }
+  .intro-inner { max-width: 640px; }
+  .kicker { letter-spacing: .32em; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+  h1 { font-family: "Chonburi", serif; font-weight: 400; color: var(--gold); margin: 18px 0 6px;
+    font-size: clamp(30px, 7vw, 56px); line-height: 1.25;
+    background: linear-gradient(180deg, var(--gold-hi), #c99343); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { font-family: "Chonburi", serif; color: var(--gold); opacity: .8; font-size: clamp(15px, 3.4vw, 20px); }
+  .lede { color: var(--muted); font-weight: 300; font-size: 16px; line-height: 1.75; margin: 26px auto 34px; max-width: 30em; }
+  .ornament { width: 160px; height: 14px; margin: 18px auto 0; opacity: .8; }
+  #startBtn { font: 600 17px "Sarabun", sans-serif; color: #1a0f04; cursor: pointer; border: 0; border-radius: 999px;
+    padding: 15px 34px; background: linear-gradient(180deg, #ffe7a8, #d3a052);
+    box-shadow: 0 0 0 1px rgba(255,235,180,.5), 0 10px 40px rgba(233,170,80,.35); transition: transform .2s, box-shadow .2s; }
+  #startBtn:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,235,180,.7), 0 14px 50px rgba(233,170,80,.5); }
+  .tips { margin-top: 26px; font-size: 13px; color: var(--muted); line-height: 1.8; }
+  .credit { position: fixed; bottom: 18px; left: 0; right: 0; font-size: 12px; color: rgba(239,230,214,.4); }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; opacity: 0; transition: opacity 2s; }
+  #hud.show { opacity: 1; }
+  .hud-top { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .hud-title { font-family: "Chonburi", serif; color: var(--gold); font-size: 15px; text-shadow: 0 0 12px rgba(0,0,0,.8); }
+  .hud-state { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .bar { width: 160px; height: 2px; margin-top: 8px; background: var(--gold-dim); border-radius: 2px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--gold-hi); box-shadow: 0 0 8px var(--gold); transition: width .4s; }
+  .hud-btns { display: flex; gap: 8px; pointer-events: auto; }
+  .chip { font: 400 13px "Sarabun", sans-serif; color: var(--text); background: rgba(10,6,18,.55); border: 1px solid var(--gold-dim);
+    border-radius: 999px; padding: 7px 14px; cursor: pointer; backdrop-filter: blur(6px); }
+  .chip:hover { border-color: var(--gold); }
+  .hint { position: absolute; left: 16px; right: 16px; bottom: calc(22px + env(safe-area-inset-bottom)); text-align: center;
+    font-size: 14px; color: var(--muted); text-shadow: 0 0 10px #000; transition: opacity 1s; }
+  #VRButton { pointer-events: auto; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="intro">
+  <div class="intro-inner">
+    <div class="kicker">สรรพศาสตร์ศิลป์ · เทพสตรีวันทา</div>
+    <svg class="ornament" viewBox="0 0 160 14" aria-hidden="true"><g fill="none" stroke="#e9c27a" stroke-width="1"><path d="M0 7h62M98 7h62"/><path d="M80 1l7 6-7 6-7-6z"/><circle cx="68" cy="7" r="2"/><circle cx="92" cy="7" r="2"/></g></svg>
+    <h1>เมืองที่สร้างจากเสียง</h1>
+    <div class="sub">อาจาริยัง ประสิทธิ</div>
+    <p class="lede">เมื่อเสียงดนตรีถวายครูดังขึ้น ทุกตัวโน้ตจะกลายเป็นเสา หลังคา และช่อฟ้า
+      ก่อร่างเป็นวิหารทองขึ้นรอบตัวคุณ ลองแตะลูกระนาดเพื่อร่วมบรรเลงและสร้างวิหารไปด้วยกัน</p>
+    <button id="startBtn">เข้าสู่โลกแห่งเสียง</button>
+    <div class="tips">🎧 ใส่หูฟังเพื่อประสบการณ์ที่ดีที่สุด<br>หมุนมือถือหรือลากหน้าจอเพื่อมองรอบตัว</div>
+  </div>
+  <div class="credit">สำนักศิลปะและวัฒนธรรม มหาวิทยาลัยราชภัฏเทพสตรี · ต้นแบบ (prototype)</div>
+</div>
+
+<div id="hud">
+  <div class="hud-top">
+    <div>
+      <div class="hud-title">เมืองที่สร้างจากเสียง</div>
+      <div class="hud-state" id="hudState">ความว่างเปล่า…</div>
+      <div class="bar"><i id="hudBar"></i></div>
+    </div>
+    <div class="hud-btns">
+      <button class="chip" id="muteBtn">🔊 เสียง</button>
+    </div>
+  </div>
+  <div class="hint" id="hint">แตะลูกระนาดเพื่อร่วมบรรเลง · ลากเพื่อมองรอบตัว</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const V3 = THREE.Vector3;
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp01 = t => Math.min(1, Math.max(0, t));
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+const easeOutBack = t => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const smooth = t => t * t * (3 - 2 * t);
+
+/* =====================================================================
+   Renderer / scene
+   ===================================================================== */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.xr.enabled = true;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06040c);
+scene.fog = new THREE.FogExp2(0x07040e, 0.016);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+const rig = new THREE.Group();
+scene.add(rig);
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 500);
+camera.position.set(0, 1.6, 0);
+camera.rotation.order = 'YXZ';
+rig.add(camera);
+
+scene.add(new THREE.HemisphereLight(0x7a6cff, 0x1a0c05, 0.35));
+const moon = new THREE.DirectionalLight(0xa9b6ff, 0.55);
+moon.position.set(12, 25, 8);
+scene.add(moon);
+const heartLight = new THREE.PointLight(0xffb45e, 0.5, 0, 1);
+heartLight.position.set(0, 9, 0);
+scene.add(heartLight);
+const lowLight = new THREE.PointLight(0xff9a4a, 0.6, 0, 1.4);
+lowLight.position.set(0, 1.2, -1.2);
+scene.add(lowLight);
+
+/* =====================================================================
+   Canvas textures
+   ===================================================================== */
+function canvasTex(w, h, draw, srgb = true) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+const glowTex = canvasTex(128, 128, (g, w) => {
+  const r = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+  r.addColorStop(0, 'rgba(255,248,225,1)');
+  r.addColorStop(0.18, 'rgba(255,214,140,.85)');
+  r.addColorStop(0.5, 'rgba(240,160,60,.22)');
+  r.addColorStop(1, 'rgba(240,140,40,0)');
+  g.fillStyle = r; g.fillRect(0, 0, w, w);
+});
+
+// กระเบื้องหลังคา: one stripe = one course of tiles running parallel to the eave
+const tileTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#8f2412'; g.fillRect(0, 0, w, h);
+  const n = 8, sw = w / n;
+  for (let i = 0; i < n; i++) {
+    const gr = g.createLinearGradient(i * sw, 0, (i + 1) * sw, 0);
+    gr.addColorStop(0, '#5a1209'); gr.addColorStop(0.25, '#b8401f'); gr.addColorStop(1, '#7d1d0e');
+    g.fillStyle = gr; g.fillRect(i * sw, 0, sw, h);
+    for (let j = 0; j < 8; j++) {
+      const y = j * 32 + (i % 2) * 16;
+      g.fillStyle = 'rgba(40,6,2,.55)'; g.fillRect(i * sw, y, sw, 2);
+    }
+  }
+});
+tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
+
+// เพดาน: red lacquer with gold ดาวเพดาน
+const ceilTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#4a0c0a'; g.fillRect(0, 0, w, h);
+  const star = (x, y, r) => {
+    g.save(); g.translate(x, y); g.fillStyle = '#e8be6a';
+    for (let k = 0; k < 8; k++) { g.rotate(Math.PI / 4); g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(r * .35, r * .5, 0, r); g.quadraticCurveTo(-r * .35, r * .5, 0, 0); g.fill(); }
+    g.beginPath(); g.arc(0, 0, r * .22, 0, 7); g.fillStyle = '#fff0c4'; g.fill(); g.restore();
+  };
+  star(64, 64, 34); star(192, 192, 34); star(192, 64, 14); star(64, 192, 14);
+});
+ceilTex.wrapS = ceilTex.wrapT = THREE.RepeatWrapping;
+
+// หน้าบัน: gold กนก flames on red lacquer, triangle-mapped (v = 1 at the apex)
+const gableTex = canvasTex(1024, 512, (g, w, h) => {
+  g.fillStyle = '#5a0d0a'; g.fillRect(0, 0, w, h);
+  const gr = g.createLinearGradient(0, 0, 0, h);
+  gr.addColorStop(0, '#fff0c0'); gr.addColorStop(1, '#c48a2c');
+  g.fillStyle = gr; g.strokeStyle = gr;
+  const flame = (x, y, s, rot, flip) => {
+    g.save(); g.translate(x, y); g.rotate(rot); g.scale(s * flip, s);
+    g.beginPath(); g.moveTo(0, 0);
+    g.bezierCurveTo(-20, -8, -18, -40, 4, -62);
+    g.bezierCurveTo(-4, -40, 12, -26, 22, -34);
+    g.bezierCurveTo(26, -14, 14, 2, 0, 0);
+    g.fill(); g.restore();
+  };
+  for (let y = h - 20, row = 0; y > 70; y -= 44, row++) {
+    const half = (w / 2) * (y / h) - 34;
+    const cnt = Math.max(1, Math.floor((half * 2) / 54));
+    for (let i = 0; i <= cnt; i++) {
+      const x = w / 2 - half + (i * half * 2) / cnt;
+      const flip = x < w / 2 ? -1 : 1;
+      flame(x, y, 0.62, (row % 2 ? 0.25 : -0.15) * flip, flip);
+    }
+  }
+  // central ประจำยาม medallion
+  g.save(); g.translate(w / 2, h * 0.62);
+  g.beginPath(); g.arc(0, 0, 86, 0, 7); g.fillStyle = '#5a0d0a'; g.fill();
+  g.lineWidth = 6; g.strokeStyle = gr; g.stroke();
+  g.fillStyle = gr;
+  for (let k = 0; k < 4; k++) {
+    g.rotate(Math.PI / 2);
+    g.beginPath(); g.moveTo(0, -10); g.quadraticCurveTo(40, -40, 0, -74); g.quadraticCurveTo(-40, -40, 0, -10); g.fill();
+  }
+  g.beginPath(); g.arc(0, 0, 16, 0, 7); g.fillStyle = '#fff3cf'; g.fill();
+  g.restore();
+  // border
+  g.lineWidth = 14; g.strokeStyle = gr;
+  g.beginPath(); g.moveTo(10, h - 8); g.lineTo(w / 2, 10); g.lineTo(w - 10, h - 8); g.closePath(); g.stroke();
+});
+
+// ดอกบัวแสง under the viewer's feet
+const lotusTex = canvasTex(1024, 1024, (g, w) => {
+  g.translate(w / 2, w / 2);
+  g.strokeStyle = 'rgba(255,214,140,.9)'; g.lineWidth = 3;
+  g.shadowColor = 'rgba(255,190,90,1)'; g.shadowBlur = 18;
+  const ring = (n, r0, r1, rot) => {
+    for (let k = 0; k < n; k++) {
+      g.save(); g.rotate(rot + (k * Math.PI * 2) / n);
+      g.beginPath(); g.moveTo(0, r0);
+      g.bezierCurveTo(r1 * .32, r0 + (r1 - r0) * .35, r1 * .18, r1 * .9, 0, r1);
+      g.bezierCurveTo(-r1 * .18, r1 * .9, -r1 * .32, r0 + (r1 - r0) * .35, 0, r0);
+      g.stroke(); g.restore();
+    }
+  };
+  ring(8, 40, 200, 0); ring(12, 150, 320, .13); ring(16, 280, 440, 0);
+  [40, 150, 280, 470].forEach(r => { g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke(); });
+});
+
+const stoneFloorTex = canvasTex(512, 512, (g, w) => {
+  g.fillStyle = '#1a120d'; g.fillRect(0, 0, w, w);
+  for (let i = 0; i < 4000; i++) { g.fillStyle = `rgba(${90 + Math.random() * 60},${60 + Math.random() * 40},40,${Math.random() * .08})`; g.fillRect(Math.random() * w, Math.random() * w, 2, 2); }
+  g.strokeStyle = 'rgba(214,170,90,.55)'; g.lineWidth = 3; g.strokeRect(0, 0, w, w);
+  g.lineWidth = 1.5; g.strokeRect(w * .5 - 30, w * .5 - 30, 60, 60);
+});
+stoneFloorTex.wrapS = stoneFloorTex.wrapT = THREE.RepeatWrapping;
+stoneFloorTex.repeat.set(8, 14);
+
+/* =====================================================================
+   Materials
+   ===================================================================== */
+const goldMat = new THREE.MeshStandardMaterial({ color: 0xe2b155, metalness: 1, roughness: 0.28, emissive: 0x2c1803 });
+const goldDS = goldMat.clone(); goldDS.side = THREE.DoubleSide;
+const goldMats = [goldMat, goldDS];
+const lacquer = new THREE.MeshStandardMaterial({ color: 0x6a1410, roughness: 0.38, metalness: 0.25 });
+const stucco = new THREE.MeshStandardMaterial({ color: 0xe6dccb, roughness: 0.85 });
+const floorMat = new THREE.MeshStandardMaterial({ map: stoneFloorTex, roughness: 0.18, metalness: 0.55 });
+const gableMat = new THREE.MeshStandardMaterial({ map: gableTex, color: 0xd8b48a, roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide });
+
+/* =====================================================================
+   The void: sky gradient, stars, drifting gold dust, mirror floor
+   ===================================================================== */
+const sky = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: {},
+  vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `varying vec3 vP; void main(){
+    float h = vP.y;
+    vec3 top = vec3(.008,.006,.02), hor = vec3(.10,.055,.16), bot = vec3(.02,.012,.02);
+    vec3 c = h > 0. ? mix(hor, top, pow(h,.55)) : mix(hor, bot, pow(-h,.4));
+    gl_FragColor = vec4(c,1.); }`
+}));
+scene.add(sky);
+
+function makePoints(n, gen, size, color, opacity) {
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const p = gen(); pos.set([p.x, p.y, p.z], i * 3); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({
+    size, color, map: glowTex, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false
+  }));
+}
+const stars = makePoints(1800, () => new V3().randomDirection().multiplyScalar(260).setY(Math.abs(Math.random() * 260 - 30)), 1.4, 0xcfd6ff, 0.8);
+scene.add(stars);
+const dust = makePoints(900, () => {
+  const r = 3 + Math.random() * 34, a = Math.random() * Math.PI * 2;
+  return new V3(Math.cos(a) * r, -1 + Math.random() * 22, Math.sin(a) * r);
+}, 0.16, 0xffc46e, 0.75);
+scene.add(dust);
+
+const mirror = new THREE.Mesh(new THREE.CircleGeometry(160, 64),
+  new THREE.MeshStandardMaterial({ color: 0x050308, roughness: 0.12, metalness: 0.9 }));
+mirror.rotation.x = -Math.PI / 2; mirror.position.y = -1.25;
+scene.add(mirror);
+
+const lotus = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({
+  map: lotusTex, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending
+}));
+lotus.rotation.x = -Math.PI / 2; lotus.position.y = 0.012;
+scene.add(lotus);
+
+/* =====================================================================
+   The temple (วิหาร) — every element is a "piece" that one note builds
+   ===================================================================== */
+const pieces = [];
+function addPiece(obj, order) {
+  scene.add(obj);
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  const c = box.getCenter(new V3());
+  const w = new THREE.Group();
+  w.position.copy(c);
+  scene.add(w);
+  obj.position.sub(c);
+  w.add(obj);
+  w.visible = false;
+  pieces.push({ w, c, size: box.getSize(new V3()).length(), order: order + pieces.length * 1e-4, state: 'hidden', t0: 0 });
+}
+
+const HW = 5;          // half-width of the hall at the column line
+const OH = 1.3;        // eave overhang
+const GZ = 0.35;       // gable overhang
+const TIERS = [
+  { ye: 7.2, yr: 15.0, segs: [[-7, 7]], gables: [-7, 7], scale: 1.35, ord: 300 },
+  { ye: 6.0, yr: 13.2, segs: [[7, 9.5], [-9.5, -7]], gables: [9.5, -9.5], scale: 1.1, ord: 200 },
+  { ye: 4.8, yr: 11.4, segs: [[9.5, 12], [-12, -9.5]], gables: [12, -12], scale: 1.0, ord: 100 },
+];
+const eaveAt = z => { const a = Math.abs(z); return a <= 7 ? TIERS[0].ye : a <= 9.5 ? TIERS[1].ye : TIERS[2].ye; };
+const roofGeom = T => {
+  const rise = T.yr - T.ye, slope = rise / HW, a = Math.atan2(rise, HW);
+  return { a, slope, yE: T.ye - OH * slope, xE: HW + OH, L: Math.hypot(HW + OH, T.yr - (T.ye - OH * slope)) };
+};
+
+// --- ฐาน: three stacked plinth tiers, the floor on top
+[[19, 31, -0.875], [17.5, 29.5, -0.525], [16, 28, -0.175]].forEach(([w, d, y], i) => {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.35, d), stucco); m.position.y = y; g.add(m);
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.05, d + 0.06), goldMat); trim.position.y = y + 0.15; g.add(trim);
+  if (i === 2) {
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.4, d - 0.4), floorMat);
+    f.rotation.x = -Math.PI / 2; f.position.y = 0.002; g.add(f);
+  }
+  addPiece(g, i);
+});
+
+// --- เสา with บัวหัวเสา / บัวโคนเสา
+const lotusCap = new THREE.LatheGeometry([
+  new THREE.Vector2(0.24, 0), new THREE.Vector2(0.33, 0.08), new THREE.Vector2(0.42, 0.24),
+  new THREE.Vector2(0.4, 0.34), new THREE.Vector2(0.3, 0.4)
+], 8);
+const colZ = [];
+for (let z = -11.25; z <= 11.26; z += 2.5) colZ.push(z);
+colZ.forEach(z => [-1, 1].forEach(s => {
+  const H = eaveAt(z) - 0.45;
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.31, H, 8), lacquer);
+  shaft.position.y = H / 2; g.add(shaft);
+  const cap = new THREE.Mesh(lotusCap, goldMat); cap.position.y = H - 0.4; g.add(cap);
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.42, 0.22, 8), goldMat); foot.position.y = 0.11; g.add(foot);
+  g.position.set(s * HW, 0, z);
+  addPiece(g, 10 + Math.abs(z) + (s > 0 ? 0.1 : 0));
+}));
+
+// --- ขื่อ / อะเส: beams along each side, one per roof section
+[[-11.25, -9.5], [-9.5, -7], [-7, 7], [7, 9.5], [9.5, 11.25]].forEach(([z1, z2]) => [-1, 1].forEach(s => {
+  const ye = eaveAt((z1 + z2) / 2);
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, z2 - z1 + 0.35), lacquer); g.add(b);
+  const t = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, z2 - z1 + 0.37), goldMat); t.position.y = -0.2; g.add(t);
+  g.position.set(s * HW, ye - 0.25, (z1 + z2) / 2);
+  addPiece(g, 40 + Math.abs((z1 + z2) / 2));
+}));
+
+// --- หลังคา
+TIERS.forEach((T, ti) => {
+  const R = roofGeom(T);
+  T.segs.forEach(([za, zb]) => {
+    let z1 = Math.min(za, zb), z2 = Math.max(za, zb);
+    if (T.gables.includes(z2)) z2 += GZ;
+    if (T.gables.includes(z1)) z1 -= GZ;
+    const zl = z2 - z1, zc = (z1 + z2) / 2;
+    [-1, 1].forEach(s => {
+      const top = new THREE.MeshStandardMaterial({ map: tileTex.clone(), roughness: 0.55, metalness: 0.1 });
+      top.map.repeat.set(R.L / 0.55, zl / 0.9); top.map.needsUpdate = true;
+      const under = new THREE.MeshStandardMaterial({ map: ceilTex.clone(), roughness: 0.5, metalness: 0.2 });
+      under.map.repeat.set(R.L / 1.4, zl / 1.4); under.map.needsUpdate = true;
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(R.L, 0.16, zl), [goldMat, goldMat, top, under, goldMat, goldMat]);
+      panel.position.set(s * R.xE / 2, (R.yE + T.yr) / 2, zc);
+      panel.rotation.z = -s * R.a;
+      const g = new THREE.Group(); g.add(panel);
+      if (s > 0) {
+        const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, zl), goldMat);
+        ridge.position.set(0, T.yr + 0.06, zc); ridge.rotation.z = Math.PI / 4; g.add(ridge);
+      }
+      addPiece(g, 60 + ti * 0.1 - (ti === 0 ? 1 : 0));
+    });
+  });
+});
+
+// --- หน้าบัน, ป้านลม + ใบระกา, หางหงส์, ช่อฟ้า
+const finGeo = s => {
+  const sh = new THREE.Shape();
+  sh.moveTo(-0.09, 0);
+  sh.quadraticCurveTo(-0.02 - s * 0.05, 0.16, -s * 0.13, 0.4);
+  sh.quadraticCurveTo(0.07 - s * 0.04, 0.14, 0.09, 0);
+  sh.closePath();
+  return new THREE.ShapeGeometry(sh);
+};
+const FIN = { '-1': finGeo(-1), '1': finGeo(1) };
+
+TIERS.forEach(T => {
+  const R = roofGeom(T), rise = T.yr - T.ye, k = T.scale;
+  T.gables.forEach(zg => {
+    const dir = Math.sign(zg), zf = zg + dir * GZ;
+
+    // หน้าบัน (gable triangle)
+    const sh = new THREE.Shape(); sh.moveTo(-HW, 0); sh.lineTo(HW, 0); sh.lineTo(0, rise); sh.closePath();
+    const gg = new THREE.ShapeGeometry(sh);
+    const pos = gg.attributes.position, uv = gg.attributes.uv;
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + HW) / (2 * HW), pos.getY(i) / rise);
+    const gm = new THREE.Mesh(gg, gableMat); gm.position.set(0, T.ye, zg + dir * 0.02);
+    addPiece(gm, T.ord);
+
+    [-1, 1].forEach(s => {
+      // ป้านลม board + ใบระกา fins, merged into one mesh
+      const Pe = new V3(s * R.xE, R.yE, zf), Pr = new V3(0, T.yr, zf);
+      const n = new V3(s * Math.sin(R.a), Math.cos(R.a), 0);
+      const rot = new THREE.Matrix4().makeRotationZ(-s * R.a);
+      const parts = [];
+      const board = new THREE.BoxGeometry(R.L, 0.24, 0.12);
+      board.applyMatrix4(new THREE.Matrix4().compose(Pe.clone().lerp(Pr, 0.5).addScaledVector(n, 0.12), new THREE.Quaternion().setFromRotationMatrix(rot), new V3(1, 1, 1)));
+      parts.push(board);
+      const count = Math.floor(R.L / 0.42);
+      for (let i = 1; i < count; i++) {
+        const p = Pe.clone().lerp(Pr, i / count).addScaledVector(n, 0.24);
+        const f = FIN[s].clone();
+        f.applyMatrix4(new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromRotationMatrix(rot), new V3(k, k, k)));
+        parts.push(f);
+      }
+      addPiece(new THREE.Mesh(mergeGeometries(parts), goldDS), T.ord + 1);
+
+      // หางหงส์
+      const hc = new THREE.CatmullRomCurve3([
+        new V3(0, 0, 0), new V3(s * .3, .1, 0), new V3(s * .55, .45, 0), new V3(s * .5, .85, 0), new V3(s * .25, .95, 0)
+      ].map(v => v.multiplyScalar(k)));
+      const hm = new THREE.Mesh(new THREE.TubeGeometry(hc, 32, 0.07 * k, 8), goldMat);
+      hm.position.copy(Pe);
+      addPiece(hm, T.ord + 2);
+    });
+
+    // ช่อฟ้า — the top tier's two are the very last pieces (the "ยกช่อฟ้า" moment)
+    const cc = new THREE.CatmullRomCurve3([
+      new V3(0, 0, 0), new V3(0, .5, dir * .15), new V3(0, 1.0, dir * .45), new V3(0, 1.32, dir * .9),
+      new V3(0, 1.26, dir * 1.3), new V3(0, 1.0, dir * 1.45)
+    ].map(v => v.multiplyScalar(k)));
+    const cg = new THREE.Group();
+    cg.add(new THREE.Mesh(new THREE.TubeGeometry(cc, 48, 0.09 * k, 8), goldMat));
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.12 * k, 12, 8), goldMat);
+    tip.position.copy(cc.getPoint(1)); cg.add(tip);
+    cg.position.set(0, T.yr + 0.15, zf);
+    addPiece(cg, T.ord === 300 ? 900 : T.ord + 3);
+  });
+});
+
+pieces.sort((a, b) => a.order - b.order);
+const N = pieces.length;
+
+// --- ชื่องาน, revealed when the hall is complete
+const titleMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, fog: false });
+const title = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), titleMat);
+title.position.set(0, 3.1, -5.2);
+scene.add(title);
+document.fonts.load('80px Chonburi').finally(() => {
+  titleMat.map = canvasTex(2048, 512, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 60, 0, 460);
+    gr.addColorStop(0, '#fff3cf'); gr.addColorStop(1, '#d39a45');
+    const sy = (h / w) * 2.2, cy = h / 2 / sy;
+    const back = g.createRadialGradient(w / 2, cy, 0, w / 2, cy, w / 2);
+    back.addColorStop(0, 'rgba(8,4,12,.82)'); back.addColorStop(0.7, 'rgba(8,4,12,.5)'); back.addColorStop(1, 'rgba(8,4,12,0)');
+    g.save(); g.scale(1, sy); g.fillStyle = back; g.fillRect(0, 0, w, h / sy); g.restore();
+    g.textAlign = 'center'; g.fillStyle = gr;
+    g.shadowColor = 'rgba(255,170,60,.85)'; g.shadowBlur = 30;
+    g.font = '112px Chonburi, serif'; g.fillText('สรรพศาสตร์ศิลป์ เทพสตรีวันทา', w / 2, 240);
+    g.font = '96px Chonburi, serif'; g.fillText('อาจาริยัง ประสิทธิ', w / 2, 420);
+  });
+  titleMat.needsUpdate = true;
+});
+
+/* =====================================================================
+   ระนาดเอก — floats in front of the viewer, plays itself, and can be played
+   ===================================================================== */
+const KEYS = 14;
+const ranat = new THREE.Group();
+ranat.position.set(0, 0.85, -1.45);
+scene.add(ranat);
+{
+  const sh = new THREE.Shape();
+  const topY = x => 0.06 * Math.pow(x / 0.5, 2) - 0.035 + (Math.abs(x) > 0.52 ? (Math.abs(x) - 0.52) * 1.2 : 0);
+  const botY = x => -0.13 + 0.07 * Math.pow(x / 0.6, 2);
+  sh.moveTo(-0.62, topY(-0.62));
+  for (let x = -0.6; x <= 0.62; x += 0.04) sh.lineTo(x, topY(x));
+  for (let x = 0.6; x >= -0.62; x -= 0.04) sh.lineTo(x, botY(x));
+  sh.closePath();
+  const bg = new THREE.ExtrudeGeometry(sh, { depth: 0.34, bevelEnabled: true, bevelSize: 0.01, bevelThickness: 0.01, bevelSegments: 1 });
+  bg.translate(0, 0, -0.17);
+  ranat.add(new THREE.Mesh(bg, lacquer));
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 0.12, 8), goldMat);
+  foot.position.y = -0.17; ranat.add(foot);
+}
+const keys = [];
+for (let i = 0; i < KEYS; i++) {
+  const x = -0.455 + i * 0.07, len = lerp(0.34, 0.23, i / (KEYS - 1));
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.024, len),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.06, 0.55, 0.16 + (i % 2) * 0.02), roughness: 0.45, metalness: 0.05, emissive: 0xffb050, emissiveIntensity: 0 }));
+  m.position.set(x, 0.06 * Math.pow(x / 0.5, 2) + 0.012, 0);
+  m.userData = { i, y0: m.position.y, flash: 0 };
+  ranat.add(m); keys.push(m);
+}
+const keyWorld = i => keys[i].getWorldPosition(new V3());
+
+/* =====================================================================
+   Audio — synthesised ระนาด, ฆ้อง, ฉิ่ง tuned to Thai 7-tone equal temperament
+   ===================================================================== */
+let ac = null, master, revIn, noiseBuf, muted = false;
+const keyFreq = i => 290 * Math.pow(2, i / 7);
+
+function initAudio() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.85;
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
+  master.connect(comp); comp.connect(ac.destination);
+  const len = ac.sampleRate * 3.4, ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+  const conv = ac.createConvolver(); conv.buffer = ir;
+  const wet = ac.createGain(); wet.gain.value = 0.38;
+  revIn = ac.createGain(); revIn.connect(conv); conv.connect(wet); wet.connect(comp);
+  noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.25, ac.sampleRate);
+  const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+}
+function out(node, dry = 1, wet = 1) {
+  const a = ac.createGain(); a.gain.value = dry; node.connect(a); a.connect(master);
+  const b = ac.createGain(); b.gain.value = wet; node.connect(b); b.connect(revIn);
+}
+function partial(dest, f, amp, dec, t) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.frequency.value = f;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(amp, t + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+  o.connect(g); g.connect(dest); o.start(t); o.stop(t + dec + 0.05);
+}
+function noiseHit(dest, t, freq, q, amp, dec, type = 'bandpass') {
+  const s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const g = ac.createGain(); g.gain.setValueAtTime(amp, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+  s.connect(f); f.connect(g); g.connect(dest); s.start(t); s.stop(t + dec + 0.02);
+}
+function playRanat(i, t = ac.currentTime, vel = 1) {
+  const f = keyFreq(i), bus = ac.createGain(); bus.gain.value = 0.3 * vel; out(bus, 1, 0.9);
+  partial(bus, f, 1, 0.75, t);
+  partial(bus, f * 2.01, 0.18, 0.35, t);
+  partial(bus, f * 2.76, 0.32, 0.22, t);
+  partial(bus, f * 5.4, 0.12, 0.08, t);
+  noiseHit(bus, t, 2600, 1.2, 0.35, 0.025);
+}
+function playGong(i, t) {
+  const f = keyFreq(i) / 2, bus = ac.createGain(); bus.gain.value = 0.22; out(bus, 1, 1.1);
+  partial(bus, f, 1, 2.6, t); partial(bus, f + 1.6, 0.6, 2.4, t);
+  partial(bus, f * 2.02, 0.25, 1.4, t); partial(bus, f * 3.0, 0.08, 0.7, t);
+}
+function playChing(t, open) {
+  const bus = ac.createGain(); bus.gain.value = open ? 0.06 : 0.05; out(bus, 1, 0.7);
+  if (open) [2730, 3905, 5190, 6620].forEach((f, j) => partial(bus, f, 1 / (j + 1), 1.4 - j * 0.2, t));
+  else { partial(bus, 2730, 0.6, 0.06, t); noiseHit(bus, t, 6000, 0.8, 0.9, 0.05); }
+}
+
+// Placeholder melody in the Thai pentatonic, written as scale steps.
+// -1 = a held note, played as a กรอ (roll) on the last note.
+const P = [0, 1, 2, 4, 5, 7, 8, 9, 11, 12];
+const PHRASES = [
+  [4, 3, 2, 1, 2, 3, 4, 6, 5, 4, 3, 4, 5, 6, 7, 6, 5, 4, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 5, 4, 3, -1],
+  [6, 5, 4, 5, 6, 7, 6, 5, 4, 3, 2, 3, 4, 5, 4, 3, 2, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, 1, 0, -1, 0, -1],
+  [2, 3, 4, 6, 5, 4, 3, 2, 3, 4, 5, 7, 6, 5, 4, 3, 4, 5, 6, 8, 7, 6, 5, 4, 5, 6, 7, 9, 8, 7, 6, -1],
+  [8, 7, 6, 5, 6, 7, 8, 7, 6, 5, 4, 3, 4, 5, 6, 5, 4, 3, 2, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, -1, 2, -1],
+];
+let nextT = 0, step = 0, phraseIdx = 0, posInPhrase = 0, lastKey = 4, buildTick = 0;
+const events = [];
+
+function stepDur() {
+  if (state === 'build') return lerp(0.44, 0.21, smooth(builtCount / N));
+  if (state === 'complete') return 0.21;
+  if (state === 'dissolve') return 0.27;
+  return 0.4;
+}
+function scheduleStep(t) {
+  const n = PHRASES[phraseIdx][posInPhrase], d = stepDur();
+  if (n >= 0) {
+    const k = P[n]; lastKey = k;
+    playRanat(k, t, 1); events.push({ t, type: 'note', key: k, build: true });
+    if (step % 2 === 0 && k + 7 < KEYS) { playRanat(k + 7, t, 0.5); events.push({ t, type: 'note', key: k + 7 }); }
+  } else {
+    for (let r = 0; r < 4; r++) {
+      const tt = t + (r * d) / 4, kk = r % 2 ? Math.min(KEYS - 1, lastKey + 7) : lastKey;
+      playRanat(kk, tt, 0.45); events.push({ t: tt, type: 'note', key: kk });
+    }
+  }
+  if (step % 2 === 0) playChing(t, (step / 2) % 2 === 0);
+  if (step % 4 === 0) { playGong(lastKey, t); events.push({ t, type: 'gong' }); }
+  step++;
+  if (++posInPhrase >= PHRASES[phraseIdx].length) { posInPhrase = 0; phraseIdx = (phraseIdx + 1) % PHRASES.length; }
+}
+setInterval(() => {
+  if (!ac || state === 'idle') return;
+  while (nextT < ac.currentTime + 0.12) { scheduleStep(nextT); nextT += stepDur(); }
+}, 25);
+
+/* =====================================================================
+   Light: trails from key to piece, bursts, sparkles, ripples
+   ===================================================================== */
+const fx = [];
+function sprite(pos, size, color = 0xffd08a) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  s.position.copy(pos); s.scale.setScalar(size); scene.add(s); return s;
+}
+function spawnTrail(from, to, dur, onArrive) {
+  const ctrl = from.clone().lerp(to, 0.5); ctrl.y += 2 + from.distanceTo(to) * 0.25;
+  fx.push({ kind: 'trail', s: sprite(from, 0.35), from: from.clone(), ctrl, to: to.clone(), t0: now, dur, onArrive });
+}
+function burst(pos, size) {
+  fx.push({ kind: 'flash', s: sprite(pos, size * 0.6), t0: now, dur: 0.9, size: size * 0.6 });
+  for (let i = 0; i < 10; i++) {
+    const v = new V3().randomDirection().multiplyScalar(1 + Math.random() * 2.5);
+    fx.push({ kind: 'spark', s: sprite(pos, 0.2), v, t0: now, dur: 1 + Math.random() * 0.6 });
+  }
+}
+function sparkle(pos) {
+  fx.push({ kind: 'spark', s: sprite(pos, 0.12), v: new V3((Math.random() - .5) * .3, 0.9 + Math.random() * .6, (Math.random() - .5) * .3), t0: now, dur: 1.4 });
+}
+function ripple(strength = 1) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 128), new THREE.MeshBasicMaterial({
+    color: 0xd98a3a, transparent: true, opacity: 0.3 * strength, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+  }));
+  m.rotation.x = -Math.PI / 2; m.position.y = builtCount > 2 ? 0.03 : -1.2;
+  scene.add(m);
+  fx.push({ kind: 'ripple', m, t0: now, dur: 3.2, o: 0.3 * strength });
+}
+function updateFx() {
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const e = fx[i], t = (now - e.t0) / e.dur;
+    if (t >= 1) {
+      if (e.onArrive) e.onArrive();
+      const o = e.s || e.m; scene.remove(o); o.material.dispose(); if (e.m) o.geometry.dispose();
+      fx.splice(i, 1); continue;
+    }
+    if (e.kind === 'trail') {
+      const u = easeOutCubic(t), a = e.from.clone().lerp(e.ctrl, u), b = e.ctrl.clone().lerp(e.to, u);
+      e.s.position.copy(a.lerp(b, u)); e.s.material.opacity = 1;
+    } else if (e.kind === 'flash') {
+      e.s.scale.setScalar(e.size * (1 + t * 1.5)); e.s.material.opacity = 1 - t;
+    } else if (e.kind === 'spark') {
+      e.s.position.addScaledVector(e.v, dt); e.v.multiplyScalar(0.97); e.s.material.opacity = 1 - t;
+    } else if (e.kind === 'ripple') {
+      e.m.scale.setScalar(0.6 + easeOutCubic(t) * 26); e.m.material.opacity = e.o * (1 - t);
+    }
+  }
+}
+
+/* =====================================================================
+   Build / dissolve state machine
+   ===================================================================== */
+let state = 'idle', stateT = 0, nextBuild = 0, builtCount = 0, lastPieceEnd = 0, now = 0, dt = 0, goldPulse = 0;
+const PIECE_DUR = 0.95, FLY = 0.45;
+const FAST = new URLSearchParams(location.search).has('fast'); // debug: one piece per note
+
+function setState(s) { state = s; stateT = now; updateHud(); }
+function buildNext(fromKey) {
+  if (state !== 'build' || nextBuild >= N) return;
+  const p = pieces[nextBuild++];
+  p.state = 'anim'; p.t0 = now + FLY; lastPieceEnd = p.t0 + PIECE_DUR;
+  spawnTrail(keyWorld(fromKey), p.c, FLY, () => { burst(p.c, Math.min(6, 1.2 + p.size * 0.25)); builtCount++; updateHud(); });
+}
+function updatePieces() {
+  for (let i = 0; i < N; i++) {
+    const p = pieces[i];
+    if (p.state === 'anim') {
+      const t = (now - p.t0) / PIECE_DUR;
+      if (t < 0) continue;
+      p.w.visible = true;
+      const e = clamp01(t);
+      p.w.scale.setScalar(Math.max(0.001, easeOutBack(e)));
+      p.w.position.set(p.c.x, p.c.y + (1 - easeOutCubic(e)) * 1.6, p.c.z);
+      if (e >= 1) p.state = 'built';
+    } else if (p.state === 'out') {
+      const t = (now - p.t0) / 0.9;
+      if (t < 0) continue;
+      if (!p.burst) { p.burst = true; burst(p.c, Math.min(5, 1 + p.size * 0.2)); }
+      const e = clamp01(t);
+      p.w.scale.setScalar(Math.max(0.001, 1 - easeOutCubic(e)));
+      p.w.position.set(p.c.x, p.c.y + e * 2.5, p.c.z);
+      if (e >= 1) { p.state = 'gone'; p.w.visible = false; }
+    }
+  }
+}
+function stepState() {
+  if (state === 'void' && now - stateT > 3) setState('build');
+  else if (state === 'build' && nextBuild >= N && now > lastPieceEnd + 0.3) { setState('complete'); goldPulse = 1.5; }
+  else if (state === 'complete' && now - stateT > 18) {
+    setState('dissolve');
+    for (let i = N - 1, j = 0; i >= 0; i--, j++) { const p = pieces[i]; p.state = 'out'; p.burst = false; p.t0 = now + j * 0.07; }
+  } else if (state === 'dissolve' && now - stateT > N * 0.07 + 1.2) {
+    pieces.forEach(p => { p.state = 'hidden'; p.w.visible = false; p.w.position.copy(p.c); p.w.scale.setScalar(1); });
+    nextBuild = 0; builtCount = 0; buildTick = 0;
+    setState('void');
+  }
+}
+function fire(ev) {
+  if (ev.type === 'note') {
+    flashKey(ev.key, ev.build ? 1 : 0.6);
+    if (ev.build && state === 'build' && (FAST || ++buildTick % 2 === 0)) buildNext(ev.key);
+    else if (Math.random() < 0.5) sparkle(keyWorld(ev.key));
+  } else if (ev.type === 'gong') {
+    ripple(state === 'complete' ? 1.4 : 0.8);
+    if (state === 'complete') goldPulse = 1;
+  }
+}
+function flashKey(i, v) { const u = keys[i].userData; u.flash = Math.max(u.flash, v); }
+
+/* =====================================================================
+   Input: drag-to-look, gyroscope, tap keys, XR controllers, keyboard
+   ===================================================================== */
+let yaw = 0, pitch = -0.1, gyro = null, alpha0 = null;
+const raycaster = new THREE.Raycaster();
+function hitKeysFromRay() {
+  const h = raycaster.intersectObjects(keys, false)[0];
+  return h ? h.object.userData.i : -1;
+}
+function strike(i) {
+  if (!ac || i < 0) return;
+  playRanat(i, ac.currentTime, 1.1);
+  flashKey(i, 1.4);
+  if (state === 'build') buildNext(i);
+  else { sparkle(keyWorld(i)); sparkle(keyWorld(i)); }
+  ripple(0.5);
+  hideHintSoon();
+}
+let down = null;
+renderer.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: 0 }; });
+addEventListener('pointermove', e => {
+  if (!down) return;
+  const dx = e.clientX - down.lx, dy = e.clientY - down.ly;
+  down.lx = e.clientX; down.ly = e.clientY; down.moved += Math.abs(dx) + Math.abs(dy);
+  yaw += dx * 0.0045;
+  if (!gyro) pitch = Math.max(-1.35, Math.min(1.35, pitch + dy * 0.0045));
+});
+addEventListener('pointerup', e => {
+  if (down && down.moved < 8) {
+    raycaster.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
+    strike(hitKeysFromRay());
+  }
+  down = null;
+});
+const KEYMAP = '1234567890qwer';
+addEventListener('keydown', e => { const i = KEYMAP.indexOf(e.key.toLowerCase()); if (i >= 0 && !e.repeat) strike(i); });
+
+addEventListener('deviceorientation', e => { if (e.alpha != null) gyro = { a: e.alpha, b: e.beta, g: e.gamma }; });
+const qTmp = new THREE.Quaternion(), qFix = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const qYaw = new THREE.Quaternion(), eul = new THREE.Euler(), Z = new V3(0, 0, 1), Y = new V3(0, 1, 0);
+function applyLook() {
+  if (renderer.xr.isPresenting) return;
+  if (gyro) {
+    if (alpha0 === null) alpha0 = gyro.a;
+    const d = THREE.MathUtils.DEG2RAD;
+    eul.set(gyro.b * d, (gyro.a - alpha0) * d, -gyro.g * d, 'YXZ');
+    camera.quaternion.setFromEuler(eul).multiply(qFix);
+    const orient = ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * d;
+    camera.quaternion.multiply(qTmp.setFromAxisAngle(Z, -orient));
+    camera.quaternion.premultiply(qYaw.setFromAxisAngle(Y, yaw));
+  } else {
+    camera.rotation.set(pitch, yaw, 0, 'YXZ');
+  }
+}
+
+// XR controllers: point the ray at a key and pull the trigger
+const ctrlMat = new THREE.Matrix4();
+for (let c = 0; c < 2; c++) {
+  const ctrl = renderer.xr.getController(c);
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(), new V3(0, 0, -1)]),
+    new THREE.LineBasicMaterial({ color: 0xffd08a, transparent: true, opacity: 0.6 }));
+  line.scale.z = 3; ctrl.add(line);
+  ctrl.addEventListener('selectstart', () => {
+    ctrlMat.identity().extractRotation(ctrl.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(ctrlMat);
+    strike(hitKeysFromRay());
+  });
+  rig.add(ctrl);
+}
+
+/* =====================================================================
+   Start / HUD
+   ===================================================================== */
+const intro = document.getElementById('intro'), hud = document.getElementById('hud');
+const hudState = document.getElementById('hudState'), hudBar = document.getElementById('hudBar'), hint = document.getElementById('hint');
+const STATE_TEXT = { idle: '', void: 'ความว่างเปล่า… เสียงกำลังมา', build: 'เสียงกำลังก่อร่างวิหาร', complete: 'วิหารแห่งเสียงสมบูรณ์', dissolve: 'เสียงจางหาย วิหารคืนสู่แสง' };
+function updateHud() {
+  hudState.textContent = state === 'build' ? `${STATE_TEXT.build} · ${builtCount}/${N}` : STATE_TEXT[state];
+  hudBar.style.width = `${(state === 'complete' ? 1 : state === 'dissolve' || state === 'void' ? 0 : builtCount / N) * 100}%`;
+}
+let hintTimer = null;
+function hideHintSoon() { clearTimeout(hintTimer); hintTimer = setTimeout(() => { hint.style.opacity = 0; }, 6000); }
+
+async function start() {
+  if (state !== 'idle') return;
+  if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { await DeviceOrientationEvent.requestPermission(); } catch (_) {}
+  }
+  if (!ac) initAudio();
+  await ac.resume();
+  nextT = ac.currentTime + 0.3;
+  intro.classList.add('hide'); hud.classList.add('show');
+  setState('void');
+  setTimeout(() => { hint.style.opacity = 0.0; }, 22000);
+}
+document.getElementById('startBtn').addEventListener('click', start);
+document.getElementById('muteBtn').addEventListener('click', e => {
+  muted = !muted; if (master) master.gain.value = muted ? 0 : 0.85;
+  e.currentTarget.textContent = muted ? '🔇 ปิดเสียง' : '🔊 เสียง';
+});
+renderer.xr.addEventListener('sessionstart', start);
+if (navigator.xr) navigator.xr.isSessionSupported('immersive-vr').then(ok => { if (ok) document.body.appendChild(VRButton.createButton(renderer)); });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.fov = camera.aspect < 0.8 ? 82 : 72;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+dispatchEvent(new Event('resize'));
+
+/* =====================================================================
+   Frame loop
+   ===================================================================== */
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  dt = Math.min(0.05, clock.getDelta()); now = clock.elapsedTime;
+  if (ac) while (events.length && events[0].t <= ac.currentTime) fire(events.shift());
+  stepState();
+  updatePieces();
+  updateFx();
+  applyLook();
+
+  keys.forEach(k => {
+    const u = k.userData;
+    u.flash *= Math.pow(0.02, dt);
+    k.material.emissiveIntensity = u.flash * 0.9;
+    k.position.y = u.y0 - u.flash * 0.008;
+  });
+  ranat.position.y = 0.85 + Math.sin(now * 0.8) * 0.012;
+
+  const prog = state === 'complete' ? 1 : state === 'build' ? builtCount / N : state === 'dissolve' ? 0.6 : 0;
+  goldPulse *= Math.pow(0.15, dt);
+  goldMats.forEach(m => { m.emissiveIntensity = 1 + prog * 1.2 + goldPulse * 3; });
+  heartLight.intensity = lerp(heartLight.intensity, 0.4 + prog * 5 + goldPulse * 3, 0.05);
+  lotus.material.opacity = 0.35 + 0.25 * Math.sin(now * 1.4) * 0.5 + (1 - prog) * 0.2;
+  lotus.rotation.z += dt * 0.03;
+  titleMat.opacity = lerp(titleMat.opacity, state === 'complete' ? 1 : 0, 0.02);
+  dust.rotation.y += dt * 0.012;
+  dust.position.y = Math.sin(now * 0.2) * 0.4;
+
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
