@@ -337,7 +337,9 @@ function addPiece(obj, order) {
   obj.position.sub(c);
   w.add(obj);
   w.visible = false;
-  pieces.push({ w, c, size: box.getSize(new V3()).length(), order: order + pieces.length * 1e-4, state: 'hidden', t0: 0 });
+  // pieces under the viewer's feet (ฐาน, floor) rise from below and sink away, so they never sweep through eye level
+  const under = box.min.x < 0 && box.max.x > 0 && box.min.z < 0 && box.max.z > 0 && box.max.y < 0.5;
+  pieces.push({ w, c, size: box.getSize(new V3()).length(), order: order + pieces.length * 1e-4, state: 'hidden', t0: 0, dir: under ? -1 : 1 });
 }
 
 const HW = 5;          // half-width of the hall at the column line
@@ -807,7 +809,7 @@ function updatePieces() {
       p.w.visible = true;
       const e = clamp01(t);
       p.w.scale.setScalar(Math.max(0.001, easeOutBack(e)));
-      p.w.position.set(p.c.x, p.c.y + (1 - easeOutCubic(e)) * 1.6, p.c.z);
+      p.w.position.set(p.c.x, p.c.y + p.dir * (1 - easeOutCubic(e)) * 1.6, p.c.z);
       if (e >= 1) p.state = 'built';
     } else if (p.state === 'out') {
       const t = (now - p.t0) / 0.9;
@@ -815,7 +817,7 @@ function updatePieces() {
       if (!p.burst) { p.burst = true; burst(p.c, Math.min(5, 1 + p.size * 0.2)); }
       const e = clamp01(t);
       p.w.scale.setScalar(Math.max(0.001, 1 - easeOutCubic(e)));
-      p.w.position.set(p.c.x, p.c.y + e * 2.5, p.c.z);
+      p.w.position.set(p.c.x, p.c.y + p.dir * e * 2.5, p.c.z);
       if (e >= 1) { p.state = 'gone'; p.w.visible = false; }
     }
   }
