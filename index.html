@@ -681,9 +681,13 @@ setInterval(() => {
    Guide lights: each falls onto its key and lands exactly on the beat
    ===================================================================== */
 const APPROACH = 1.6, HIT_WIN = 0.2, PERFECT_WIN = 0.08, DROP = 0.45;
+// one colour per note of the 7-tone octave, the Thai colours of the days (อาทิตย์ … เสาร์),
+// so neighbouring keys never share a colour
+const GUIDE_COLORS = [0xff4a3d, 0xffe14a, 0xff6fb5, 0x4cff7a, 0xff9a2e, 0x4ab8ff, 0xa86bff].map(c => new THREE.Color(c));
+const KEY_GLOW = new THREE.Color(0xffb050);
 const guides = [];
 function addGuide(key, t) {
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xfff0c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: GUIDE_COLORS[key % 7], transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   s.visible = false; ranat.add(s);
   guides.push({ key, t, s, done: null, doneT: 0 });
 }
@@ -698,7 +702,7 @@ function updateGuides() {
     if (g.done) {
       const e = (at - g.doneT) / 0.4;
       if (g.done === 'hit' || e >= 1) { ranat.remove(g.s); g.s.material.dispose(); guides.splice(i, 1); continue; }
-      g.s.material.color.setHex(0x8a7aa8); g.s.material.opacity = 0.5 * (1 - e); g.s.position.y -= dt * 0.3;
+      g.s.material.color.setHex(0x55505f); g.s.material.opacity = 0.5 * (1 - e); g.s.position.y -= dt * 0.3;
       continue;
     }
     const u = 1 - (g.t - at) / APPROACH; // 0 when it appears, 1 on the beat
@@ -1087,7 +1091,8 @@ renderer.setAnimationLoop(() => {
   keys.forEach(k => {
     const u = k.userData;
     u.flash *= Math.pow(0.02, dt);
-    k.material.emissiveIntensity = u.flash * 0.9 + u.guide * 0.45;
+    k.material.emissiveIntensity = u.flash * 0.9 + u.guide * 0.6;
+    k.material.emissive.copy(KEY_GLOW).lerp(GUIDE_COLORS[u.i % 7], u.guide / (u.guide + u.flash + 1e-3));
     k.position.y = u.y0 - u.flash * 0.008;
   });
   ranat.position.set(ranatBase.x, ranatBase.y + Math.sin(now * 0.8) * (renderer.xr.isPresenting ? 0.003 : 0.012), ranatBase.z);
