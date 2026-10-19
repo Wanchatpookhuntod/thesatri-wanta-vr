@@ -748,10 +748,10 @@ function hitKeysFromRay() {
   const h = raycaster.intersectObjects(keys, false)[0];
   return h ? h.object.userData.i : -1;
 }
-function strike(i) {
+function strike(i, vel = 1.1) {
   if (!ac || i < 0) return;
-  playRanat(i, ac.currentTime, 1.1);
-  flashKey(i, 1.4);
+  playRanat(i, ac.currentTime, vel);
+  flashKey(i, 0.5 + vel * 0.8);
   if (state === 'build') buildNext(i);
   else { sparkle(keyWorld(i)); sparkle(keyWorld(i)); }
   ripple(0.5);
@@ -794,21 +794,95 @@ function applyLook() {
   }
 }
 
-// XR controllers: point the ray at a key and pull the trigger
+// XR controllers: a ไม้ตีระนาด in each hand. Swing the head down onto a key to play it;
+// pulling the trigger still strikes whatever key the mallet points at.
+const MALLET_LEN = 0.3, HEAD_R = 0.017;
+const mallets = [];
+function makeMallet() {
+  const g = new THREE.Group();
+  g.rotation.x = -0.45; // hang the stick slightly downward from the fist
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.006, MALLET_LEN, 8),
+    new THREE.MeshStandardMaterial({ color: 0x3a2214, roughness: 0.6 }));
+  handle.rotation.x = Math.PI / 2; handle.position.z = 0.04 - MALLET_LEN / 2;
+  g.add(handle);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0062, 0.0018, 6, 16), goldMat);
+  ring.position.z = 0.04 - MALLET_LEN + 0.03;
+  g.add(ring);
+  // หัวไม้แข็ง: a lacquered disc of wound cloth, flattened along the stick's axis
+  const headMat = lacquer.clone(); headMat.emissive = new THREE.Color(0xffb050); headMat.emissiveIntensity = 0;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(HEAD_R, 16, 12), headMat);
+  head.scale.set(1, 1, 0.75);
+  head.position.z = 0.04 - MALLET_LEN - HEAD_R * 0.5;
+  g.add(head);
+  return { g, head, headMat };
+}
+
 const ctrlMat = new THREE.Matrix4();
 for (let c = 0; c < 2; c++) {
   const ctrl = renderer.xr.getController(c);
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(), new V3(0, 0, -1)]),
-    new THREE.LineBasicMaterial({ color: 0xffd08a, transparent: true, opacity: 0.6 }));
-  line.scale.z = 3; ctrl.add(line);
+  const grip = renderer.xr.getControllerGrip(c);
+  const m = makeMallet();
+  grip.add(m.g);
+  const hand = { ...m, ctrl, grip, source: null, prev: new V3(), cur: new V3(), local: new V3(), prevLocal: new V3(), ready: false, lastHit: -1, lastHitT: 0, glow: 0 };
+  mallets.push(hand);
+  ctrl.addEventListener('connected', e => { hand.source = e.data; hand.ready = false; });
+  ctrl.addEventListener('disconnected', () => { hand.source = null; });
   ctrl.addEventListener('selectstart', () => {
     ctrlMat.identity().extractRotation(ctrl.matrixWorld);
     raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
     raycaster.ray.direction.set(0, 0, -1).applyMatrix4(ctrlMat);
-    strike(hitKeysFromRay());
+    const i = hitKeysFromRay();
+    if (i >= 0) { strike(i); buzz(hand, 0.5, 30); }
   });
-  rig.add(ctrl);
+  rig.add(ctrl); rig.add(grip);
 }
+
+function buzz(hand, intensity, ms) {
+  const act = hand.source && hand.source.gamepad && hand.source.gamepad.hapticActuators;
+  if (act && act[0] && act[0].pulse) { try { act[0].pulse(Math.min(1, intensity), ms); } catch (_) {} }
+}
+
+// A hit is the bottom of the head crossing a key's top face on the way down, inside the key's footprint.
+const KEY_HALF_W = 0.029, KEY_TOP = 0.012, MIN_DOWN_SPEED = 0.25;
+function updateMallets() {
+  if (!renderer.xr.isPresenting) return;
+  ranat.updateMatrixWorld();
+  for (const h of mallets) {
+    h.glow *= Math.pow(0.01, dt);
+    h.headMat.emissiveIntensity = h.glow;
+    if (!h.source) continue;
+    h.head.getWorldPosition(h.cur);
+    h.local.copy(h.cur); ranat.worldToLocal(h.local);
+    if (!h.ready) { h.prev.copy(h.cur); h.prevLocal.copy(h.local); h.ready = true; continue; }
+    const vy = (h.local.y - h.prevLocal.y) / Math.max(dt, 1e-3);
+    const speed = h.cur.distanceTo(h.prev) / Math.max(dt, 1e-3);
+    if (vy < -MIN_DOWN_SPEED) {
+      for (const k of keys) {
+        const u = k.userData, top = u.y0 + KEY_TOP;
+        const halfLen = k.geometry.parameters.depth / 2;
+        if (h.prevLocal.y - HEAD_R < top || h.local.y - HEAD_R > top) continue;
+        // where the head crossed the key's top plane
+        const s = (h.prevLocal.y - HEAD_R - top) / (h.prevLocal.y - h.local.y);
+        const x = lerp(h.prevLocal.x, h.local.x, s), z = lerp(h.prevLocal.z, h.local.z, s);
+        if (Math.abs(x - k.position.x) > KEY_HALF_W + HEAD_R * 0.5 || Math.abs(z - k.position.z) > halfLen) continue;
+        if (u.i === h.lastHit && now - h.lastHitT < 0.08) break;
+        const vel = Math.min(1.6, 0.45 + speed * 0.32);
+        strike(u.i, vel);
+        buzz(h, 0.2 + vel * 0.45, 18 + vel * 20);
+        h.glow = 0.6 + vel * 0.6;
+        h.lastHit = u.i; h.lastHitT = now;
+        break;
+      }
+    }
+    h.prev.copy(h.cur); h.prevLocal.copy(h.local);
+  }
+}
+
+// In VR the ranat comes within arm's reach; on screen it stays further away to frame the hall.
+const RANAT_SCREEN = new V3(0, 0.85, -1.45), RANAT_VR = new V3(0, 0.9, -0.5);
+const ranatBase = RANAT_SCREEN.clone();
+renderer.xr.addEventListener('sessionstart', () => { ranatBase.copy(RANAT_VR); mallets.forEach(h => { h.ready = false; }); });
+renderer.xr.addEventListener('sessionend', () => { ranatBase.copy(RANAT_SCREEN); });
 
 /* =====================================================================
    Start / HUD
@@ -869,7 +943,8 @@ renderer.setAnimationLoop(() => {
     k.material.emissiveIntensity = u.flash * 0.9;
     k.position.y = u.y0 - u.flash * 0.008;
   });
-  ranat.position.y = 0.85 + Math.sin(now * 0.8) * 0.012;
+  ranat.position.set(ranatBase.x, ranatBase.y + Math.sin(now * 0.8) * (renderer.xr.isPresenting ? 0.003 : 0.012), ranatBase.z);
+  updateMallets();
 
   const prog = state === 'complete' ? 1 : state === 'build' ? builtCount / N : state === 'dissolve' ? 0.6 : 0;
   goldPulse *= Math.pow(0.15, dt);
