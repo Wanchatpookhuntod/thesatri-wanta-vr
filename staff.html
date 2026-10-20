@@ -13,6 +13,7 @@
   .staff svg { display: block; cursor: pointer; }
   .staff .abcjs-annotation { fill: var(--gold) !important; opacity: .85; }
   /* same look as the Thai page: the sounding measure gets a gold wash, the sounding note a bright box */
+  .staff .hl-bar, .staff .hl-note { stroke: none; }   /* abcjs puts a stroke on the whole SVG */
   .staff .hl-bar { fill: rgba(233, 194, 122, .16); }
   .staff .hl-note { fill: var(--gold-hi); filter: drop-shadow(0 0 5px var(--gold)); }
   .staff .abcjs-hit, .staff .abcjs-hit path { fill: #1a0f04 !important; stroke: none; }
