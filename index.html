@@ -47,6 +47,11 @@
     background: rgba(10,6,18,.4); border: 1px solid var(--gold-dim); transition: background .2s, border-color .2s; }
   .song:hover { border-color: var(--gold); }
   .song[aria-pressed="true"] { color: #1a0f04; background: var(--gold); border-color: var(--gold); }
+  .notes-link { display: inline-block; margin-top: 16px; font-size: 14px; color: var(--gold); text-decoration: none;
+    border-bottom: 1px solid var(--gold-dim); padding-bottom: 2px; }
+  .notes-link:hover { color: var(--gold-hi); border-color: var(--gold); }
+  a.chip { text-decoration: none; }
+  .notes-link + .tips { margin-top: 12px; }
   .tips { margin-top: 26px; font-size: 13px; color: var(--muted); line-height: 1.8; }
   .credit { position: fixed; bottom: 18px; left: 0; right: 0; font-size: 12px; color: rgba(239,230,214,.4); }
 
@@ -89,6 +94,7 @@
       <button id="startBtn">เข้าสู่โลกแห่งเสียง</button>
       <button id="guideBtn">บรรเลงตามโน้ต</button>
     </div>
+    <a class="notes-link" href="notes.html">📜 ดูโน้ตเพลงครู ๗๒ เพลง</a>
     <div class="tips">🎧 ใส่หูฟังเพื่อประสบการณ์ที่ดีที่สุด<br>บรรเลงตามโน้ต: ตีลูกระนาดตอนที่ดวงแสงตกลงถึง ตีตรงจังหวะแล้ววิหารจะก่อร่าง<br>หมุนมือถือหรือลากหน้าจอเพื่อมองรอบตัว</div>
   </div>
   <div class="credit">สำนักศิลปะและวัฒนธรรม มหาวิทยาลัยราชภัฏเทพสตรี · ต้นแบบ (prototype)</div>
@@ -105,6 +111,7 @@
       <button class="chip" id="songBtn">🎶 เพลง</button>
       <button class="chip" id="modeBtn">🎵 บรรเลงตามโน้ต</button>
       <button class="chip" id="muteBtn">🔊 เสียง</button>
+      <a class="chip" href="notes.html" target="_blank" rel="noopener">📜 โน้ต</a>
     </div>
   </div>
   <div class="hint" id="hint">แตะลูกระนาดเพื่อร่วมบรรเลง · ลากเพื่อมองรอบตัว</div>
