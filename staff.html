@@ -14,9 +14,8 @@
   .staff .abcjs-annotation { fill: var(--gold) !important; opacity: .85; }
   /* same look as the Thai page: the sounding measure gets a gold wash, the sounding note a bright box */
   .staff .hl-bar { fill: rgba(233, 194, 122, .16); }
-  .staff .hl-note { fill: rgba(255, 241, 201, .28); stroke: var(--gold-hi); stroke-width: 1.5;
-    filter: drop-shadow(0 0 6px rgba(233, 194, 122, .9)); }
-  .staff .abcjs-hit, .staff .abcjs-hit path { fill: var(--gold-hi) !important; stroke: none; }
+  .staff .hl-note { fill: var(--gold-hi); filter: drop-shadow(0 0 5px var(--gold)); }
+  .staff .abcjs-hit, .staff .abcjs-hit path { fill: #1a0f04 !important; stroke: none; }
 </style>
 </head>
 <body>
@@ -188,7 +187,7 @@ const player = NK.createPlayer({
     if (!ev) { hlBar?.remove(); hlBar = null; return; }
     if (!ev.els.length) return;
     ev.els.forEach(e => e.classList.add('abcjs-hit'));
-    hlNote = backRect(ev.els[0].ownerSVGElement, unionBox(ev.els), 4, 'hl-note');
+    hlNote = backRect(ev.els[0].ownerSVGElement, unionBox(ev.els), 3, 'hl-note');
     if (!prev || prev.mi !== ev.mi) {
       hlBar?.remove();
       hlBar = barRect(ev);
