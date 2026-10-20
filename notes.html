@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>โน้ตเพลงครู</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chonburi&family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06040c;
+    --panel: #0f0a18;
+    --panel-2: #160f22;
+    --line: rgba(233, 194, 122, .16);
+    --gold: #e9c27a;
+    --gold-hi: #fff1c9;
+    --gold-dim: rgba(233, 194, 122, .35);
+    --text: #efe6d6;
+    --muted: rgba(239, 230, 214, .62);
+    --faint: rgba(239, 230, 214, .38);
+    --play: rgba(233, 194, 122, .18);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Sarabun", system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  button, input, select { font: inherit; color: inherit; }
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 100vh; }
+
+  /* ---------- sidebar ---------- */
+  aside { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
+    background: var(--panel); border-right: 1px solid var(--line); }
+  .brand { padding: 20px 18px 14px; }
+  .brand h1 { margin: 0; font: 400 22px "Chonburi", serif; color: var(--gold); }
+  .brand p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .search { margin: 0 14px 10px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); outline: none; }
+  .search:focus { border-color: var(--gold-dim); }
+  #songList { flex: 1; overflow-y: auto; padding: 0 8px 24px; }
+  .group-h { position: sticky; top: 0; background: var(--panel); padding: 12px 10px 6px;
+    font-size: 11.5px; letter-spacing: .08em; color: var(--gold); opacity: .85; }
+  .song-btn { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; border: 0;
+    background: none; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; scroll-margin: 40px 0 8px; }
+  .song-btn:hover { background: var(--panel-2); }
+  .song-btn.active { background: var(--play); color: var(--gold-hi); }
+  .song-btn .no { font-size: 12px; color: var(--faint); min-width: 20px; font-variant-numeric: tabular-nums; }
+  .song-btn .pg { margin-left: auto; font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+
+  /* ---------- main ---------- */
+  main { min-width: 0; }
+  .scrim { display: none; }
+  .transport { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    padding: 12px 24px; background: rgba(6, 4, 12, .92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .transport .menu-btn { display: none; }
+  .btn { border: 1px solid var(--gold-dim); background: var(--panel-2); border-radius: 999px; padding: 7px 14px;
+    cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { border-color: var(--gold); }
+  .btn.primary { background: linear-gradient(180deg, #ffe7a8, #d3a052); color: #1a0f04; border-color: transparent; font-weight: 600; min-width: 96px; justify-content: center; }
+  .ctl { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .ctl select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+  .ctl input[type=range] { width: 110px; accent-color: var(--gold); }
+  .ctl input[type=checkbox] { accent-color: var(--gold); }
+  .tempo-val { min-width: 54px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .pos { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .sheet { padding: 28px 24px 120px; max-width: 1100px; }
+  .song-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+  .song-h h2 { margin: 0; font: 400 clamp(26px, 4vw, 36px) "Chonburi", serif; color: var(--gold); }
+  .meta { font-size: 13px; color: var(--muted); }
+  .heading-note { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+
+  .section { margin-top: 26px; }
+  .section h3 { margin: 0 0 10px; font: 600 15px "Sarabun", sans-serif; color: var(--gold);
+    display: flex; align-items: center; gap: 10px; }
+  .section h3::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .txt { margin: 8px 0; padding-left: 12px; border-left: 2px solid var(--gold-dim); color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+  .row { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start;
+    padding: 4px 0; cursor: pointer; border-radius: 8px; }
+  .row:hover .cells { border-color: var(--gold-dim); }
+  .ln { padding-top: 9px; text-align: right; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .row-body { min-width: 0; }
+  .instr, .rmk { font-size: 12.5px; color: var(--gold); opacity: .8; margin: 2px 0 4px; }
+  .rmk { margin: 4px 0 0; }
+  .cells { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); border: 1px solid var(--line);
+    border-radius: 8px; overflow: hidden; background: var(--panel); transition: border-color .2s; }
+  .cell { padding: 7px 4px; text-align: center; font-size: 17px; letter-spacing: .04em; white-space: nowrap;
+    border-left: 1px solid var(--line); transition: background .12s; }
+  .cell:nth-child(8n+1) { border-left: 0; }
+  .cell:nth-child(2n) { background: rgba(255, 255, 255, .015); }
+  .cell.on { background: var(--play); }
+  .cell .s { display: inline-block; min-width: .62em; border-radius: 3px; transition: color .08s; }
+  .cell .s.rest { color: var(--faint); }
+  .cell .s.hit { color: #1a0f04; background: var(--gold-hi); box-shadow: 0 0 10px var(--gold); }
+  .cell .echo { font-size: 11px; color: var(--gold); margin-left: 2px; }
+
+  .empty { padding: 80px 24px; color: var(--muted); text-align: center; line-height: 1.8; }
+  .empty code { color: var(--gold); }
+  .legend { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--faint); line-height: 1.8; }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    aside { position: fixed; z-index: 20; inset: 0 auto 0 0; width: min(320px, 86vw); transform: translateX(-100%);
+      transition: transform .25s ease; box-shadow: 0 0 40px rgba(0,0,0,.7); }
+    body.drawer aside { transform: none; }
+    .scrim { display: none; position: fixed; inset: 0; z-index: 15; background: rgba(0,0,0,.5); }
+    body.drawer .scrim { display: block; }
+    .transport .menu-btn { display: inline-flex; }
+    .transport { padding: 10px 16px; }
+    .sheet { padding: 20px 16px 100px; }
+    .pos { margin-left: 0; width: 100%; }
+  }
+  @media (max-width: 620px) {
+    .cells { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .cell:nth-child(4n+1) { border-left: 0; }
+    .cell:nth-child(n+5) { border-top: 1px solid var(--line); }
+    .row { grid-template-columns: 24px minmax(0, 1fr); gap: 6px; }
+    .ctl input[type=range] { width: 90px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">
+      <h1>โน้ตเพลงครู</h1>
+      <p>เพลงหน้าพาทย์ไหว้ครู ทางฆ้อง · ต้นฉบับลายมือครูขุน พงษ์ผล · รวบรวมโดย คมสันต์ สุทนต์</p>
+    </div>
+    <input class="search" id="search" type="search" placeholder="ค้นหาชื่อเพลง…" autocomplete="off">
+    <nav id="songList"></nav>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main>
+    <div class="transport">
+      <button class="btn menu-btn" id="menuBtn" aria-label="รายการเพลง">☰ เพลง</button>
+      <button class="btn primary" id="playBtn">▶ เล่น</button>
+      <button class="btn" id="stopBtn" title="หยุดและกลับต้น">■</button>
+      <label class="ctl">ความเร็ว
+        <input type="range" id="tempo" min="40" max="200" step="5" value="90">
+        <span class="tempo-val" id="tempoVal"></span>
+      </label>
+      <label class="ctl">เครื่อง
+        <select id="inst">
+          <option value="gong">ฆ้องวงใหญ่</option>
+          <option value="ranat">ระนาดเอก</option>
+        </select>
+      </label>
+      <label class="ctl"><input type="checkbox" id="ching" checked> ฉิ่ง</label>
+      <label class="ctl"><input type="checkbox" id="loop"> วนซ้ำ</label>
+      <span class="pos" id="pos"></span>
+    </div>
+    <div class="sheet" id="sheet"><div class="empty">กำลังโหลดโน้ต…</div></div>
+  </main>
+</div>
+
+<script>
+/* =====================================================================
+   Data
+   ===================================================================== */
+const DATA_URL = 'data/phleng-khru-notes.json';
+const NOTE = 'ดรมฟซลท';
+const THAI_DIGIT = '๐๑๒๓๔๕๖๗๘๙';
+let songs = [], current = null, measures = [];
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('phlengkhru.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('phlengkhru.' + k, JSON.stringify(v)); } catch {} },
+};
+
+// A measure token like "-ร4-ม", "ซ่ล", "ทลซร(ล้อ)" → 4-ish slots.
+// ฺ = octave down, ่ = octave up, digit after a note = คู่ (e.g. 8 = octave pair).
+function parseMeasure(tok) {
+  const echo = tok.includes('(ล้อ)');
+  tok = tok.replace('(ล้อ)', '');
+  const slots = [];
+  for (const ch of tok) {
+    const last = slots[slots.length - 1];
+    const ni = NOTE.indexOf(ch);
+    if (ni >= 0) slots.push({ text: ch, deg: ni, oct: 0, pair: 0 });
+    else if (ch === '-') slots.push({ text: '-', deg: null });
+    else if (/[0-9๐-๙]/.test(ch)) {
+      const n = /[0-9]/.test(ch) ? +ch : THAI_DIGIT.indexOf(ch);
+      if (last) { last.text += ch; if (last.deg != null) last.pair = n; }
+    } else if (ch === 'ฺ') { if (last) { last.text += ch; if (last.deg != null) last.oct = -1; } }
+    else if ('ุู่้'.includes(ch)) { if (last) { last.text += ch; if (last.deg != null) last.oct = 1; } }
+    else if (ch === '*') { if (last) last.text += ch; }
+    else slots.push({ text: ch, deg: null }); // typo letters in the source (e.g. ฃ) sound as rests
+  }
+  return { slots, echo };
+}
+
+/* =====================================================================
+   Song list
+   ===================================================================== */
+function renderList(filter = '') {
+  const q = filter.trim();
+  let html = '', group = null;
+  for (const s of songs) {
+    if (q && !s.title.includes(q)) continue;
+    if (s.group !== group) { group = s.group; html += `<div class="group-h">${esc(group)}</div>`; }
+    const dup = s.occurrence > 1 ? ' (ซ้ำ)' : '';
+    html += `<button class="song-btn${current && current.id === s.id ? ' active' : ''}" data-id="${s.id}">
+      <span class="no">${s.id}</span><span>${esc(s.title)}${dup}</span><span class="pg">น.${s.pages[0]}</span></button>`;
+  }
+  $('songList').innerHTML = html || '<div class="empty" style="padding:30px 10px">ไม่พบเพลง</div>';
+}
+$('songList').addEventListener('click', e => {
+  const b = e.target.closest('.song-btn'); if (!b) return;
+  location.hash = 'song=' + b.dataset.id;
+  document.body.classList.remove('drawer');
+});
+$('search').addEventListener('input', e => renderList(e.target.value));
+$('menuBtn').addEventListener('click', () => document.body.classList.add('drawer'));
+$('scrim').addEventListener('click', () => document.body.classList.remove('drawer'));
+
+/* =====================================================================
+   Sheet
+   ===================================================================== */
+function showSong(id) {
+  stop();
+  current = songs.find(s => s.id === id) || songs[0];
+  measures = [];
+  const s = current;
+  let html = `<div class="song-h"><h2>${esc(s.title)}</h2>
+    <span class="meta">${esc(s.group)} · หน้า ${s.pages.join(', ')} · ${s.note_line_count} บรรทัด</span></div>`;
+  if (s.heading !== s.title) html += `<p class="heading-note">${esc(s.heading)}</p>`;
+  let rowIdx = 0;
+  for (const sec of s.sections) {
+    html += `<div class="section">${sec.name ? `<h3>${esc(sec.name)}</h3>` : ''}`;
+    for (const it of sec.items) {
+      if (it.type === 'text') { html += `<p class="txt">${esc(it.text)}</p>`; continue; }
+      const first = measures.length;
+      let cells = '';
+      for (const tok of it.measures) {
+        const m = parseMeasure(tok), mi = measures.length;
+        measures.push({ ...m, row: rowIdx });
+        cells += `<div class="cell" id="m${mi}">` +
+          m.slots.map((sl, k) => `<span class="s${sl.deg == null ? ' rest' : ''}" data-k="${k}">${esc(sl.text)}</span>`).join('') +
+          (m.echo ? '<span class="echo">ล้อ</span>' : '') + '</div>';
+      }
+      html += `<div class="row" data-start="${first}">
+        <div class="ln">${it.line ?? ''}</div>
+        <div class="row-body">${it.instruction ? `<div class="instr">${esc(it.instruction)}</div>` : ''}
+          <div class="cells">${cells}</div>${it.remarks ? `<div class="rmk">${esc(it.remarks)}</div>` : ''}</div></div>`;
+      rowIdx++;
+    }
+    html += '</div>';
+  }
+  html += `<div class="legend">อ่านโน้ต: 1 ช่อง = 1 ห้อง (4 จังหวะย่อย) · “-” = ไม่ตี · ฺ ใต้ตัวโน้ต = เสียงต่ำ · ่ บนตัวโน้ต = เสียงสูง ·
+    ตัวเลขท้ายโน้ต = ตีคู่ (เช่น 8 = คู่แปด) · คลิกบรรทัดใดก็ได้เพื่อเริ่มเล่นจากบรรทัดนั้น ·
+    เครื่องเล่นจะเล่นเรียงตามบรรทัด ยังไม่ทำตามคำสั่งกลับต้น/ซ้ำ</div>`;
+  $('sheet').innerHTML = html;
+  $('pos').textContent = '';
+  document.title = s.title + ' · โน้ตเพลงครู';
+  renderList($('search').value);
+  document.querySelector('.song-btn.active')?.scrollIntoView({ block: 'nearest' });
+  window.scrollTo(0, 0);
+}
+$('sheet').addEventListener('click', e => {
+  const r = e.target.closest('.row'); if (!r) return;
+  play(+r.dataset.start);
+});
+
+/* =====================================================================
+   Audio — same synthesis as index.html (Thai 7-tone equal temperament)
+   ===================================================================== */
+let ac = null, master, revIn, noiseBuf, sessDry, sessWet;
+const keyFreq = i => 290 * Math.pow(2, i / 7);
+
+function initAudio() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.85;
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
+  master.connect(comp); comp.connect(ac.destination);
+  const len = ac.sampleRate * 3.4, ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+  const conv = ac.createConvolver(); conv.buffer = ir;
+  const wet = ac.createGain(); wet.gain.value = 0.38;
+  revIn = ac.createGain(); revIn.connect(conv); conv.connect(wet); wet.connect(comp);
+  noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.25, ac.sampleRate);
+  const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  newSession();
+}
+// Every playback run gets its own bus so stop/pause can silence notes already scheduled ahead.
+function newSession() {
+  if (sessDry) {
+    const t = ac.currentTime, d = sessDry, w = sessWet;
+    [d, w].forEach(g => { g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.04); });
+    setTimeout(() => { d.disconnect(); w.disconnect(); }, 200);
+  }
+  sessDry = ac.createGain(); sessDry.connect(master);
+  sessWet = ac.createGain(); sessWet.connect(revIn);
+}
+function out(node, dry = 1, wet = 1) {
+  const a = ac.createGain(); a.gain.value = dry; node.connect(a); a.connect(sessDry);
+  const b = ac.createGain(); b.gain.value = wet; node.connect(b); b.connect(sessWet);
+}
+function partial(dest, f, amp, dec, t) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.frequency.value = f;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(amp, t + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+  o.connect(g); g.connect(dest); o.start(t); o.stop(t + dec + 0.05);
+}
+function noiseHit(dest, t, freq, q, amp, dec, type = 'bandpass') {
+  const s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const g = ac.createGain(); g.gain.setValueAtTime(amp, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+  s.connect(f); f.connect(g); g.connect(dest); s.start(t); s.stop(t + dec + 0.02);
+}
+function playRanat(i, t, vel = 1) {
+  const f = keyFreq(i), bus = ac.createGain(); bus.gain.value = 0.3 * vel; out(bus, 1, 0.9);
+  partial(bus, f, 1, 0.75, t);
+  partial(bus, f * 2.01, 0.18, 0.35, t);
+  partial(bus, f * 2.76, 0.32, 0.22, t);
+  partial(bus, f * 5.4, 0.12, 0.08, t);
+  noiseHit(bus, t, 2600, 1.2, 0.35, 0.025);
+}
+function playGong(i, t, vel = 1) {
+  const f = keyFreq(i) / 2, bus = ac.createGain(); bus.gain.value = 0.22 * vel; out(bus, 1, 1.1);
+  partial(bus, f, 1, 2.6, t); partial(bus, f + 1.6, 0.6, 2.4, t);
+  partial(bus, f * 2.02, 0.25, 1.4, t); partial(bus, f * 3.0, 0.08, 0.7, t);
+  noiseHit(bus, t, 1400, 1.5, 0.12, 0.02);
+}
+function playChing(t, open) {
+  const bus = ac.createGain(); bus.gain.value = open ? 0.06 : 0.05; out(bus, 1, 0.7);
+  if (open) [2730, 3905, 5190, 6620].forEach((f, j) => partial(bus, f, 1 / (j + 1), 1.4 - j * 0.2, t));
+  else { partial(bus, 2730, 0.6, 0.06, t); noiseHit(bus, t, 6000, 0.8, 0.9, 0.05); }
+}
+
+/* =====================================================================
+   Transport — look-ahead scheduler; visuals follow the audio clock
+   ===================================================================== */
+let playing = false, ptr = 0, nextTime = 0, timer = null, raf = 0, visQ = [], litCell = null, litSlot = null;
+const tempo = () => +$('tempo').value;                 // ห้องต่อนาที × 4 = จังหวะย่อยต่อนาที
+const measureDur = () => 60 / tempo();
+
+function scheduleMeasure(mi, t, vel = 1) {
+  const m = measures[mi], dur = measureDur(), n = Math.max(m.slots.length, 1), step = dur / n;
+  const inst = $('inst').value === 'ranat' ? playRanat : playGong;
+  m.slots.forEach((sl, k) => {
+    const at = t + k * step;
+    if (sl.deg != null) {
+      const i = sl.deg + 7 * sl.oct;
+      inst(i, at, vel);
+      if (sl.pair > 1) inst(i - (sl.pair - 1), at, vel * 0.8);
+    }
+    visQ.push({ t: at, mi, k });
+  });
+  if ($('ching').checked && mi % 2 === 1) playChing(t + dur - step, (mi >> 1) % 2 === 0);
+  return dur;
+}
+function tick() {
+  while (playing && nextTime < ac.currentTime + 0.2) {
+    if (ptr >= measures.length) {
+      if ($('loop').checked) ptr = 0;
+      else { const end = nextTime; playing = false; setTimeout(() => { if (!playing) stop(); }, Math.max(0, (end - ac.currentTime) * 1000 + 600)); break; }
+    }
+    const m = measures[ptr];
+    nextTime += scheduleMeasure(ptr, nextTime);
+    if (m.echo) nextTime += scheduleMeasure(ptr, nextTime, 0.55);   // (ล้อ): answered once more, softer
+    ptr++;
+  }
+}
+function draw() {
+  raf = requestAnimationFrame(draw);
+  if (!ac) return;
+  let ev = null;
+  while (visQ.length && visQ[0].t <= ac.currentTime) ev = visQ.shift();
+  if (!ev) return;
+  const cell = document.getElementById('m' + ev.mi);
+  if (cell !== litCell) {
+    litCell?.classList.remove('on'); cell?.classList.add('on'); litCell = cell;
+    const m = measures[ev.mi];
+    $('pos').textContent = `บรรทัด ${m.row + 1} · ห้อง ${ev.mi + 1}/${measures.length}`;
+    if (cell) {
+      const r = cell.getBoundingClientRect();
+      if (r.top < 90 || r.bottom > innerHeight - 40) cell.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+  litSlot?.classList.remove('hit');
+  litSlot = cell?.querySelector(`[data-k="${ev.k}"]`);
+  if (litSlot && !litSlot.classList.contains('rest')) litSlot.classList.add('hit'); else litSlot = null;
+}
+function play(from = null) {
+  if (!measures.length) return;
+  if (!ac) initAudio();
+  ac.resume();
+  if (from != null) { stop(); ptr = from; }
+  if (ptr >= measures.length) ptr = 0;
+  playing = true; visQ = [];
+  nextTime = ac.currentTime + 0.08;
+  clearInterval(timer); timer = setInterval(tick, 25); tick();
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(draw);
+  $('playBtn').textContent = '❚❚ พัก';
+}
+function pause() {
+  playing = false; clearInterval(timer);
+  // resume from the measure currently sounding, not the look-ahead pointer
+  if (litCell) ptr = +litCell.id.slice(1);
+  visQ = [];
+  if (ac) newSession();
+  $('playBtn').textContent = '▶ เล่นต่อ';
+}
+function stop() {
+  playing = false; clearInterval(timer); cancelAnimationFrame(raf);
+  visQ = []; ptr = 0;
+  litCell?.classList.remove('on'); litSlot?.classList.remove('hit'); litCell = litSlot = null;
+  if (ac) newSession();
+  $('playBtn').textContent = '▶ เล่น';
+}
+$('playBtn').addEventListener('click', () => playing ? pause() : play());
+$('stopBtn').addEventListener('click', () => { stop(); $('pos').textContent = ''; });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); playing ? pause() : play(); }
+});
+
+function syncTempo() {
+  $('tempoVal').textContent = tempo() + ' ห้อง/นาที';
+  store.set('tempo', tempo());
+}
+$('tempo').value = store.get('tempo', 90);
+$('inst').value = store.get('inst', 'gong');
+$('tempo').addEventListener('input', syncTempo);
+$('inst').addEventListener('change', () => store.set('inst', $('inst').value));
+syncTempo();
+
+/* =====================================================================
+   Boot
+   ===================================================================== */
+function route() {
+  const m = location.hash.match(/song=(\d+)/);
+  showSong(m ? +m[1] : songs[0].id);
+}
+fetch(DATA_URL)
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(d => {
+    songs = d.songs;
+    renderList();
+    addEventListener('hashchange', route);
+    route();
+  })
+  .catch(() => {
+    $('sheet').innerHTML = `<div class="empty">โหลดไฟล์โน้ตไม่ได้<br>เปิดผ่านเซิร์ฟเวอร์ในโฟลเดอร์โปรเจกต์:<br>
+      <code>python -m http.server 8765</code><br>แล้วไปที่ <code>http://localhost:8765/notes.html</code></div>`;
+  });
+</script>
+</body>
+</html>
