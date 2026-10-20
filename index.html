@@ -42,6 +42,11 @@
   #guideBtn { font: 600 17px "Sarabun", sans-serif; color: var(--gold-hi); cursor: pointer; border-radius: 999px; padding: 14px 30px;
     background: rgba(10,6,18,.4); border: 1px solid var(--gold); transition: transform .2s, background .2s; }
   #guideBtn:hover { transform: translateY(-1px); background: rgba(233,194,122,.12); }
+  .songs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; margin: -14px 0 22px; font-size: 14px; color: var(--muted); }
+  .song { font: 400 14px "Sarabun", sans-serif; color: var(--text); cursor: pointer; border-radius: 999px; padding: 7px 16px;
+    background: rgba(10,6,18,.4); border: 1px solid var(--gold-dim); transition: background .2s, border-color .2s; }
+  .song:hover { border-color: var(--gold); }
+  .song[aria-pressed="true"] { color: #1a0f04; background: var(--gold); border-color: var(--gold); }
   .tips { margin-top: 26px; font-size: 13px; color: var(--muted); line-height: 1.8; }
   .credit { position: fixed; bottom: 18px; left: 0; right: 0; font-size: 12px; color: rgba(239,230,214,.4); }
 
@@ -79,6 +84,7 @@
     <div class="sub">อาจาริยัง ประสิทธิ</div>
     <p class="lede">เมื่อเสียงดนตรีถวายครูดังขึ้น ทุกตัวโน้ตจะกลายเป็นเสา หลังคา และช่อฟ้า
       ก่อร่างเป็นวิหารทองขึ้นรอบตัวคุณ ลองแตะลูกระนาดเพื่อร่วมบรรเลงและสร้างวิหารไปด้วยกัน</p>
+    <div class="songs" id="songPick"><span>เพลง</span></div>
     <div class="start-btns">
       <button id="startBtn">เข้าสู่โลกแห่งเสียง</button>
       <button id="guideBtn">บรรเลงตามโน้ต</button>
@@ -96,6 +102,7 @@
       <div class="bar"><i id="hudBar"></i></div>
     </div>
     <div class="hud-btns">
+      <button class="chip" id="songBtn">🎶 เพลง</button>
       <button class="chip" id="modeBtn">🎵 บรรเลงตามโน้ต</button>
       <button class="chip" id="muteBtn">🔊 เสียง</button>
     </div>
@@ -754,7 +761,6 @@ function toggleMode() {
   setMode(mode === 'guide' ? 'auto' : 'guide');
 }
 const hitsPlaque = () => raycaster.intersectObject(plaque, false).length > 0;
-
 /* =====================================================================
    Audio — synthesised ระนาด, ฆ้อง, ฉิ่ง tuned to Thai 7-tone equal temperament
    ===================================================================== */
@@ -811,37 +817,93 @@ function playGong(i, t) {
   partial(bus, f, 1, 2.6, t); partial(bus, f + 1.6, 0.6, 2.4, t);
   partial(bus, f * 2.02, 0.25, 1.4, t); partial(bus, f * 3.0, 0.08, 0.7, t);
 }
+// ไม้ไผ่กระทบกัน: a hollow knock; the 'open' stroke is the poles knocked on their base, lower and softer
+function playWood(t, open) {
+  const bus = ac.createGain(); bus.gain.value = open ? 0.09 : 0.13; out(bus, 1, 0.5);
+  partial(bus, open ? 520 : 760, 1, 0.07, t); partial(bus, open ? 1340 : 1910, 0.4, 0.04, t);
+  noiseHit(bus, t, open ? 900 : 1500, 3, 0.8, 0.035);
+}
 function playChing(t, open) {
   const bus = ac.createGain(); bus.gain.value = open ? 0.06 : 0.05; out(bus, 1, 0.7);
   if (open) [2730, 3905, 5190, 6620].forEach((f, j) => partial(bus, f, 1 / (j + 1), 1.4 - j * 0.2, t));
   else { partial(bus, 2730, 0.6, 0.06, t); noiseHit(bus, t, 6000, 0.8, 0.9, 0.05); }
 }
 
-// ⚠ ทำนองชั่วคราว (ต้นแบบ) ยังไม่ใช่เพลงจริง รอโน้ตสาธุการจากสาขาดนตรีไทย
-// (ร่างแนวสาธุการที่เคยลองไว้อยู่ใน git history: commit e33f806)
-// Written in Thai notation so it can be edited directly: one token per step, 4 steps per ห้อง.
+// Each song is written in Thai notation so it can be edited directly: one token per step, 4 steps per ห้อง.
 //   ด ร ม ฟ ซ ล ท = the 7 notes, ' after a note = the upper octave, - = rest, ~ = กรอ (roll) on the previous note
 //   | is only a visual ห้อง separator. Each line is one phrase; the phrases play in order and loop.
-const MELODY = `
+// step = seconds per step [at the start, when the hall is nearly built] for each mode, and once the hall is complete
+const SONGS = {
+  // ⚠ ทำนองชั่วคราว (ต้นแบบ) ยังไม่ใช่เพลงจริง รอโน้ตสาธุการจากสาขาดนตรีไทย
+  // (ร่างแนวสาธุการที่เคยลองไว้อยู่ใน git history: commit e33f806)
+  kru: {
+    name: 'ทำนองไหว้ครู (ต้นแบบ)', short: 'ไหว้ครู',
+    step: { auto: [0.44, 0.21], guide: [0.44, 0.36], complete: 0.21 },
+    melody: `
 ล ซ ม ร  ม ซ ล ร'  ด' ล ซ ล  ด' ร' ม' ร'  |  ด' ล ด' ร'  ม' ซ' ล' ซ'  ม' ร' ด' ล  ด' ล ซ ~
 ร' ด' ล ด'  ร' ม' ร' ด'  ล ซ ม ซ  ล ด' ล ซ  |  ม ร ม ซ  ล ซ ม ร  ด ร ม ร  ด ~ ด ~
 ม ซ ล ร'  ด' ล ซ ม  ซ ล ด' ม'  ร' ด' ล ซ  |  ล ด' ร' ซ'  ม' ร' ด' ล  ด' ร' ม' ล'  ซ' ม' ร' ~
 ซ' ม' ร' ด'  ร' ม' ซ' ม'  ร' ด' ล ซ  ล ด' ร' ด'  |  ล ซ ม ร  ม ซ ล ซ  ม ร ด ร  ม ~ ม ~
-`;
+`,
+  },
+  // ⚠ ร่างทำนองแนวลาวกระทบไม้จากความจำ (บันไดเสียง ด ร ม ซ ล) ยังไม่ใช่โน้ตจริง ต้องให้สาขาดนตรีไทยตรวจ/แทนที่
+  // เร็วและกระเด้งกว่า มีเสียงไม้กระทบ (กระทบ-กระทบ-แยก) แทนฉิ่งปิด
+  lao: {
+    name: 'ลาวกระทบไม้', short: 'ลาวกระทบไม้', wood: true,
+    step: { auto: [0.36, 0.2], guide: [0.38, 0.32], complete: 0.2 },
+    melody: `
+ซ ล ด' ร'  ม' - ร' ด'  ล ด' ร' ด'  ล ซ ม ~  |  ซ ล ด' ร'  ม' ซ' ม' ร'  ด' ร' ด' ล  ซ ~ ซ -
+ม ซ ม ร  ด ร ม ซ  ล ซ ม ซ  ล ด' ล ~  |  ซ ล ด' ล  ซ ม ร ม  ซ ม ร ด  ร ~ ร -
+ร ม ซ ล  ด' - ล ซ  ล ด' ร' ม'  ร' ด' ล ~  |  ม' ร' ด' ร'  ม' ซ' ม' ร'  ด' ล ซ ล  ด' ~ ด' -
+ล ซ ม ซ  ล ด' ล ซ  ม ร ด ร  ม ซ ม ~  |  ร ม ซ ล  ซ ม ร ม  ร ด ร ม  ด ~ ด -
+`,
+  },
+};
 const NOTE = { 'ด': 0, 'ร': 1, 'ม': 2, 'ฟ': 3, 'ซ': 4, 'ล': 5, 'ท': 6 };
 // each step: a key index, null for a rest, or -1 for a กรอ
-const PHRASES = MELODY.trim().split('\n').map(line => line.split(/\s+/).filter(t => t && t !== '|').map(t => {
+const parseMelody = text => text.trim().split('\n').map(line => line.split(/\s+/).filter(t => t && t !== '|').map(t => {
   if (t === '-') return null;
   if (t === '~') return -1;
   if (!(t[0] in NOTE)) throw new Error(`โน้ตไม่ถูกต้อง: ${t}`);
   return NOTE[t[0]] + (t.endsWith("'") ? 7 : 0);
 }));
+let songId = new URLSearchParams(location.search).get('song');
+if (!(songId in SONGS)) songId = 'kru';
+let song = SONGS[songId], PHRASES = parseMelody(song.melody);
+
+// ป้ายเปลี่ยนเพลง just below it
+const songPlaqueMat = new THREE.MeshBasicMaterial({ transparent: true, fog: false });
+const songPlaque = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.12), songPlaqueMat);
+songPlaque.position.set(0.82, -0.05, 0.09); songPlaque.rotation.copy(plaque.rotation);
+ranat.add(songPlaque);
+function drawSongPlaque() {
+  if (songPlaqueMat.map) songPlaqueMat.map.dispose();
+  songPlaqueMat.map = canvasTex(512, 205, (g, w, h) => {
+    g.fillStyle = 'rgba(14,8,22,.88)'; g.strokeStyle = '#e9c27a'; g.lineWidth = 4;
+    g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 26); g.fill(); g.stroke();
+    g.textAlign = 'center'; g.fillStyle = '#fff1c9';
+    g.font = '50px Chonburi, serif'; g.fillText(song.short, w / 2, 98);
+    g.fillStyle = 'rgba(239,230,214,.7)';
+    g.font = '30px Sarabun, sans-serif'; g.fillText('ตีป้ายนี้เพื่อเปลี่ยนเพลง', w / 2, 160);
+  });
+  songPlaqueMat.needsUpdate = true;
+}
+drawSongPlaque();
+document.fonts.load('50px Chonburi').finally(drawSongPlaque);
+const hitsSongPlaque = () => raycaster.intersectObject(songPlaque, false).length > 0;
+let lastSongToggle = -9;
+function nextSong() {
+  if (now - lastSongToggle < 1) return;
+  lastSongToggle = now;
+  const ids = Object.keys(SONGS);
+  setSong(ids[(ids.indexOf(songId) + 1) % ids.length]);
+}
 let nextT = 0, step = 0, phraseIdx = 0, posInPhrase = 0, lastKey = 4, buildTick = 0;
 const events = [];
 
 function stepDur() {
-  if (state === 'build') return mode === 'guide' ? lerp(0.44, 0.36, smooth(builtCount / N)) : lerp(0.44, 0.21, smooth(builtCount / N));
-  if (state === 'complete') return 0.21;
+  if (state === 'build') { const [a, b] = song.step[mode]; return lerp(a, b, smooth(builtCount / N)); }
+  if (state === 'complete') return song.step.complete;
   if (state === 'dissolve') return 0.27;
   return 0.4;
 }
@@ -868,7 +930,8 @@ function scheduleStep(t) {
       playRanat(kk, tt, 0.45 * accompaniment(soft)); events.push({ t: tt, type: 'note', key: kk, soft });
     }
   }
-  if (step % 2 === 0) playChing(t, (step / 2) % 2 === 0);
+  if (song.wood) { if (step % 4 !== 3) playWood(t, step % 4 === 2); } // กระทบ กระทบ แยก
+  else if (step % 2 === 0) playChing(t, (step / 2) % 2 === 0);
   if (step % 4 === 0) { playGong(lastKey, t); events.push({ t, type: 'gong' }); }
   step++;
   if (++posInPhrase >= PHRASES[phraseIdx].length) { posInPhrase = 0; phraseIdx = (phraseIdx + 1) % PHRASES.length; }
@@ -1127,6 +1190,18 @@ function setMode(m) {
   if (state === 'build' || state === 'complete') dissolveAll(); // start the hall over in the new mode
   updateHud();
 }
+function setSong(id) {
+  if (!(id in SONGS) || id === songId) { syncSongUi(); return; }
+  songId = id; song = SONGS[id]; PHRASES = parseMelody(song.melody);
+  phraseIdx = 0; posInPhrase = 0; step = 0; // start the new song from its first ห้อง
+  syncSongUi(); drawSongPlaque();
+  if (state === 'build' || state === 'complete') dissolveAll(); // a new song builds a new hall
+  const u = new URL(location); u.searchParams.set('song', id); history.replaceState(null, '', u);
+}
+function syncSongUi() {
+  songBtn.textContent = `🎶 ${song.short}`;
+  songPick.querySelectorAll('.song').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === songId));
+}
 function stepState() {
   if (state === 'void' && now - stateT > 3) setState('build');
   else if (state === 'build' && nextBuild >= N && now > lastPieceEnd + 0.3) { setState('complete'); goldPulse = 1.5; }
@@ -1186,7 +1261,7 @@ addEventListener('pointermove', e => {
 addEventListener('pointerup', e => {
   if (down && down.moved < 8) {
     raycaster.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    if (hitsPlaque()) toggleMode(); else strike(hitKeysFromRay());
+    if (hitsPlaque()) toggleMode(); else if (hitsSongPlaque()) nextSong(); else strike(hitKeysFromRay());
   }
   down = null;
 });
@@ -1252,6 +1327,7 @@ for (let c = 0; c < 2; c++) {
     raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
     raycaster.ray.direction.set(0, 0, -1).applyMatrix4(ctrlMat);
     if (hitsPlaque()) { toggleMode(); buzz(hand, 0.6, 60); return; }
+    if (hitsSongPlaque()) { nextSong(); buzz(hand, 0.6, 60); return; }
     const i = hitKeysFromRay();
     if (i >= 0) { if (strike(i)) buzz(hand, 1, 70); else buzz(hand, 0.4, 25); }
   });
@@ -1312,6 +1388,11 @@ function updateMallets() {
       toggleMode(); buzz(h, 0.6, 60);
     }
     h.prevPl = pl;
+    const sp = songPlaque.worldToLocal(h.cur.clone());
+    if (h.prevSp && h.prevSp.z > HEAD_R && sp.z <= HEAD_R && Math.abs(sp.x) < 0.17 && Math.abs(sp.y) < 0.08 && speed > 0.3) {
+      nextSong(); buzz(h, 0.6, 60);
+    }
+    h.prevSp = sp;
     h.prev.copy(h.cur); h.prevLocal.copy(h.local);
   }
 }
@@ -1332,6 +1413,13 @@ const HINT_TEXT = {
   guide: 'ตีลูกระนาดตอนที่ดวงแสงตกลงถึง · ตรงจังหวะแล้ววิหารจะก่อร่าง',
 };
 const modeBtn = document.getElementById('modeBtn');
+const songBtn = document.getElementById('songBtn'), songPick = document.getElementById('songPick');
+for (const [id, sg] of Object.entries(SONGS)) {
+  const b = document.createElement('button');
+  b.className = 'song'; b.dataset.id = id; b.textContent = sg.name;
+  b.addEventListener('click', () => setSong(id));
+  songPick.appendChild(b);
+}
 const STATE_TEXT = { idle: '', void: 'ความว่างเปล่า… เสียงกำลังมา', build: 'เสียงกำลังก่อร่างวิหาร', complete: 'วิหารแห่งเสียงสมบูรณ์', dissolve: 'เสียงจางหาย วิหารคืนสู่แสง' };
 function updateHud() {
   hudState.textContent = state === 'build' ? `${mode === 'guide' ? 'บรรเลงตามโน้ต' : STATE_TEXT.build} · ${builtCount}/${N}${mode === 'guide' && combo >= 3 ? ` · คอมโบ ${combo}` : ''}` : STATE_TEXT[state];
@@ -1355,6 +1443,8 @@ async function start() {
 document.getElementById('startBtn').addEventListener('click', start);
 document.getElementById('guideBtn').addEventListener('click', () => { setMode('guide'); start(); });
 modeBtn.addEventListener('click', toggleMode);
+songBtn.addEventListener('click', nextSong);
+syncSongUi();
 if (mode === 'guide') { mode = 'auto'; setMode('guide'); } // sync the labels when opened with ?mode=guide
 document.getElementById('muteBtn').addEventListener('click', e => {
   muted = !muted; if (master) master.gain.value = muted ? 0 : 0.85;
