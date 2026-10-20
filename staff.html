@@ -12,9 +12,11 @@
   .staff { margin: 6px 0 14px; padding: 8px 6px 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
   .staff svg { display: block; cursor: pointer; }
   .staff .abcjs-annotation { fill: var(--gold) !important; opacity: .85; }
-  .staff .abcjs-hit, .staff .abcjs-hit path { fill: var(--gold-hi) !important; }
-  .staff .abcjs-hit { filter: drop-shadow(0 0 4px rgba(233, 194, 122, .9)); }
-  .staff .abcjs-rest.abcjs-hit, .staff .abcjs-rest.abcjs-hit path { fill: var(--gold) !important; }
+  /* same look as the Thai page: the sounding measure gets a gold wash, the sounding note a bright box */
+  .staff .hl-bar { fill: rgba(233, 194, 122, .16); }
+  .staff .hl-note { fill: rgba(255, 241, 201, .28); stroke: var(--gold-hi); stroke-width: 1.5;
+    filter: drop-shadow(0 0 6px rgba(233, 194, 122, .9)); }
+  .staff .abcjs-hit, .staff .abcjs-hit path { fill: var(--gold-hi) !important; stroke: none; }
 </style>
 </head>
 <body>
@@ -146,15 +148,50 @@ function buildTune(items, dash, mStart) {
    ===================================================================== */
 // abcjs counts the whitespace before a note as part of it, so match source ranges by overlap.
 const overlaps = (el, ev) => el.startChar < ev.end && el.endChar > ev.start;
+// Highlight boxes are drawn behind the notes, in the SVG's own coordinates.
+let hlNote = null, hlBar = null;
+function unionBox(els) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const e of els) {
+    const b = e.getBBox();
+    if (!b.width && !b.height) continue;
+    x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+function backRect(svg, b, pad, cls) {
+  if (!svg || !isFinite(b.x)) return null;
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.setAttribute('x', b.x - pad); r.setAttribute('y', b.y - pad);
+  r.setAttribute('width', b.w + pad * 2); r.setAttribute('height', b.h + pad * 2);
+  r.setAttribute('rx', 4); r.setAttribute('class', cls);
+  svg.insertBefore(r, svg.firstChild);
+  return r;
+}
+// The whole measure: across all its notes, and from the top to the bottom staff line.
+function barRect(ev) {
+  const els = (byMeasure.get(ev.mi) || []).flatMap(e => e.els);
+  const svg = ev.els[0].ownerSVGElement, b = unionBox(els);
+  const line = (ev.els[0].getAttribute('class') || '').match(/abcjs-l(\d+)/);
+  const staff = line && svg.querySelector('.abcjs-staff.abcjs-l' + line[1]);
+  if (staff) { const s = staff.getBBox(); b.y = Math.min(b.y, s.y); b.h = Math.max(b.y + b.h, s.y + s.height) - b.y; }
+  return backRect(svg, b, 6, 'hl-bar');
+}
+let byMeasure = new Map();
 let song = null, allEvents = [], measureCount = 0, renderedPerLine = 0;
 const perLine = () => (innerWidth < 700 ? 4 : 8);
 
 const player = NK.createPlayer({
   onVisual(ev, prev) {
     prev?.els.forEach(e => e.classList.remove('abcjs-hit'));
-    if (!ev) return;
+    hlNote?.remove(); hlNote = null;
+    if (!ev) { hlBar?.remove(); hlBar = null; return; }
+    if (!ev.els.length) return;
     ev.els.forEach(e => e.classList.add('abcjs-hit'));
+    hlNote = backRect(ev.els[0].ownerSVGElement, unionBox(ev.els), 4, 'hl-note');
     if (!prev || prev.mi !== ev.mi) {
+      hlBar?.remove();
+      hlBar = barRect(ev);
       $('pos').textContent = `ห้อง ${ev.mi + 1}/${measureCount}`;
       const r = ev.els[0]?.getBoundingClientRect();
       if (r && (r.top < 110 || r.bottom > innerHeight - 60)) ev.els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -206,7 +243,7 @@ function showSong(s) {
       responsive: 'resize',
       foregroundColor: '#efe6d6',
       paddingtop: 6, paddingbottom: 6, paddingleft: 4, paddingright: 4,
-      staffwidth: Math.max(300, Math.min(1040, div.clientWidth - 12)),
+      staffwidth: Math.max(300, Math.min(900, (div.clientWidth - 12) / 1.15)),
       wrap: { minSpacing: 1.6, maxSpacing: 2.8, preferredMeasuresPerLine: renderedPerLine },
       clickListener(abcElem) {
         const ev = t.events.find(e => overlaps(abcElem, e));
@@ -222,6 +259,8 @@ function showSong(s) {
     }
     allEvents.push(...t.events);
   });
+  byMeasure = new Map();
+  for (const e of allEvents) { if (!byMeasure.has(e.mi)) byMeasure.set(e.mi, []); byMeasure.get(e.mi).push(e); }
   player.load(allEvents, measureCount);
 }
 
