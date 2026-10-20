@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>โน้ตสากล เพลงครู</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chonburi&family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="notes-common.css">
+<style>
+  .staff { margin: 6px 0 14px; padding: 8px 6px 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .staff svg { display: block; cursor: pointer; }
+  .staff .abcjs-annotation { fill: var(--gold) !important; opacity: .85; }
+  .staff .abcjs-hit, .staff .abcjs-hit path { fill: var(--gold-hi) !important; }
+  .staff .abcjs-hit { filter: drop-shadow(0 0 4px rgba(233, 194, 122, .9)); }
+  .staff .abcjs-rest.abcjs-hit, .staff .abcjs-rest.abcjs-hit path { fill: var(--gold) !important; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">
+      <a class="back" href="index.html">← เมืองที่สร้างจากเสียง</a>
+      <h1>โน้ตเพลงครู</h1>
+      <p>เพลงหน้าพาทย์ไหว้ครู ทางฆ้อง · ต้นฉบับลายมือครูขุน พงษ์ผล · รวบรวมโดย คมสันต์ สุทนต์</p>
+      <nav class="views"><a href="notes.html">โน้ตไทย</a><a class="on" href="staff.html">โน้ตสากล</a></nav>
+    </div>
+    <input class="search" id="search" type="search" placeholder="ค้นหาชื่อเพลง…" autocomplete="off">
+    <nav id="songList"></nav>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main>
+    <div class="transport">
+      <button class="btn menu-btn" id="menuBtn" aria-label="รายการเพลง">☰ เพลง</button>
+      <button class="btn primary" id="playBtn">▶ เล่น</button>
+      <button class="btn" id="stopBtn" title="หยุดและกลับต้น">■</button>
+      <label class="ctl">ความเร็ว
+        <input type="range" id="tempo" min="40" max="200" step="5" value="90">
+        <span class="tempo-val" id="tempoVal"></span>
+      </label>
+      <label class="ctl">เครื่อง
+        <select id="inst">
+          <option value="gong">ฆ้องวงใหญ่</option>
+          <option value="ranat">ระนาดเอก</option>
+        </select>
+      </label>
+      <label class="ctl">เสียง
+        <select id="tuning">
+          <option value="thai">ไทย (๗ เสียงเท่า)</option>
+          <option value="western">สากล (C major)</option>
+        </select>
+      </label>
+      <label class="ctl">ขีด “-”
+        <select id="dash">
+          <option value="hold">ลากเสียงต่อ</option>
+          <option value="rest">ตัวหยุด</option>
+        </select>
+      </label>
+      <label class="ctl"><input type="checkbox" id="ching" checked> ฉิ่ง</label>
+      <label class="ctl"><input type="checkbox" id="loop"> วนซ้ำ</label>
+      <span class="pos" id="pos"></span>
+    </div>
+    <div class="sheet" id="sheet"><div class="empty">กำลังโหลดโน้ต…</div></div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js" integrity="sha384-sk+P5M5THZ2+cNNE7wQUEAwkU+812jPeru2bG637mOeCRxiCbs2hD05PdpeqFhjh" crossorigin="anonymous"></script>
+<script src="notes-common.js"></script>
+<script>
+const { $, esc } = NK;
+
+/* =====================================================================
+   Thai notation → ABC
+   ด = C; the middle register ซ…ฟ is G4–F5. M:2/4 with L:1/16, so a 4-slot
+   ห้อง is four eighth notes; 3/5/6/7-slot ห้อง become tuplets.
+   ===================================================================== */
+const abcPitch = s => {
+  const o = Math.floor(s / 7), L = 'CDEFGAB'[s - 7 * o];
+  return o >= 1 ? L.toLowerCase() + "'".repeat(o - 1) : L + ','.repeat(-o);
+};
+const abcLen = n => (n === 1 ? '' : String(n));
+// ABC can't write 5 or 7 sixteenths as one note: split and tie (rests just sit side by side).
+function abcDur(head, len, isRest) {
+  const parts = len === 5 ? [4, 1] : len === 7 ? [6, 1] : [len];
+  return parts.map(p => head + abcLen(p)).join(isRest ? '' : '-');
+}
+function headOf(pitches) {
+  if (!pitches.length) return 'z';
+  if (pitches.length === 1) return abcPitch(pitches[0]);
+  return '[' + [...pitches].sort((a, b) => a - b).map(abcPitch).join('') + ']';
+}
+
+// One measure → [{ text, k (slot index), pitches }] groups.
+function measureGroups(slots, dash) {
+  const n = slots.length;
+  const regular = [1, 2, 4, 8].includes(n);
+  if (!regular) {
+    const q = n < 4 ? 2 : n < 8 ? 4 : 8, b = 8 / q;
+    return {
+      prefix: `(${n}:${q}:${n}`,
+      groups: slots.map((sl, k) => ({ k, len: b, pitches: NK.pitchesOf(sl) })),
+    };
+  }
+  const unit = 8 / n, groups = [];
+  slots.forEach((sl, k) => {
+    const p = NK.pitchesOf(sl), last = groups[groups.length - 1];
+    if (p.length) groups.push({ k, len: unit, pitches: p });
+    else if (last && (last.pitches.length === 0 || dash === 'hold')) last.len += unit;
+    else groups.push({ k, len: unit, pitches: [] });
+  });
+  return { prefix: '', groups };
+}
+
+// A run of notation lines → one ABC tune + events carrying the char range of each note.
+function buildTune(items, dash, mStart) {
+  let abc = 'X:1\nM:2/4\nL:1/16\nK:C\n%%annotationfont Sarabun 12\n';
+  const events = [];
+  let m = mStart;
+  for (const it of items) {
+    const label = [it.line, it.instruction, it.remarks].filter(v => v != null && v !== '').join(' · ');
+    it.measures.forEach((tok, j) => {
+      const { slots, echo } = NK.parseMeasure(tok);
+      if (!slots.length) return;
+      let ann = '';
+      if (j === 0 && label) ann += `"^${String(label).replace(/"/g, "'")}"`;
+      if (echo) ann += '"^(ล้อ)"';
+      const { prefix, groups } = measureGroups(slots, $('dash').value);
+      abc += prefix;
+      groups.forEach((g, gi) => {
+        const start = abc.length;
+        abc += (gi === 0 ? ann : '') + abcDur(headOf(g.pitches), g.len, !g.pitches.length);
+        events.push({ at: m + g.k / slots.length, pitches: g.pitches, mi: m, start, end: abc.length, els: [] });
+      });
+      abc += ' | ';
+      m++;
+    });
+    abc += '\n';
+  }
+  return { abc, events, measures: m - mStart };
+}
+
+/* =====================================================================
+   Page
+   ===================================================================== */
+// abcjs counts the whitespace before a note as part of it, so match source ranges by overlap.
+const overlaps = (el, ev) => el.startChar < ev.end && el.endChar > ev.start;
+let song = null, allEvents = [], measureCount = 0, renderedPerLine = 0;
+const perLine = () => (innerWidth < 700 ? 4 : 8);
+
+const player = NK.createPlayer({
+  onVisual(ev, prev) {
+    prev?.els.forEach(e => e.classList.remove('abcjs-hit'));
+    if (!ev) return;
+    ev.els.forEach(e => e.classList.add('abcjs-hit'));
+    if (!prev || prev.mi !== ev.mi) {
+      $('pos').textContent = `ห้อง ${ev.mi + 1}/${measureCount}`;
+      const r = ev.els[0]?.getBoundingClientRect();
+      if (r && (r.top < 110 || r.bottom > innerHeight - 60)) ev.els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  },
+  onStop() { $('pos').textContent = ''; },
+});
+
+function showSong(s) {
+  player.stop();
+  song = s; allEvents = []; measureCount = 0; renderedPerLine = perLine();
+  let html = `<div class="song-h"><h2>${esc(s.title)}</h2>
+    <span class="meta">${esc(s.group)} · หน้า ${s.pages.join(', ')} · ${s.note_line_count} บรรทัด</span></div>`;
+  if (s.heading !== s.title) html += `<p class="heading-note">${esc(s.heading)}</p>`;
+
+  // Sections → text and staff blocks in the book's order; consecutive note lines share one staff.
+  const tunes = [];
+  for (const sec of s.sections) {
+    html += `<div class="section">${sec.name ? `<h3>${esc(sec.name)}</h3>` : ''}`;
+    let run = [];
+    const flush = () => {
+      if (!run.length) return;
+      const t = buildTune(run, $('dash').value, measureCount);
+      measureCount += t.measures;
+      tunes.push(t);
+      html += `<div class="staff" id="tune${tunes.length - 1}"></div>`;
+      run = [];
+    };
+    for (const it of sec.items) {
+      if (it.type === 'notes') { run.push(it); continue; }
+      flush();
+      html += `<p class="txt">${esc(it.text)}</p>`;
+    }
+    flush();
+    html += '</div>';
+  }
+  html += `<div class="legend">ถอดเป็นโน้ตสากลโดยอัตโนมัติ: ด ร ม ฟ ซ ล ท = C D E F G A B · เสียงกลาง (ไม่มีเครื่องหมาย) คือ ซ–ฟ = G4–F5 ·
+    ฺ = ต่ำลงหนึ่งช่วงคู่แปด · ่ = สูงขึ้นหนึ่งช่วงคู่แปด · ตัวเลขท้ายโน้ต (คู่) เขียนเป็นคอร์ดสองเสียง ·
+    1 ห้องไทย = 1 ห้อง 2/4 (1 ช่อง = โน้ตเขบ็ตหนึ่งชั้น) · ห้องที่มีจำนวนช่องไม่ลงตัวเขียนเป็นโน้ตกลุ่มพิเศษ (tuplet) ·
+    ตัวเลขเหนือบรรทัด = เลขบรรทัดในหนังสือ · ระดับเสียงจริงของดนตรีไทยไม่ตรงกับบันไดเสียงสากล — เลือก “เสียงไทย” เพื่อฟังแบบ ๗ เสียงเท่า ·
+    คลิกโน้ตตัวใดก็ได้เพื่อเริ่มเล่นจากตรงนั้น</div>`;
+  $('sheet').innerHTML = html;
+  document.title = s.title + ' · โน้ตสากล เพลงครู';
+
+  tunes.forEach((t, ti) => {
+    const div = $('tune' + ti);
+    const [visual] = ABCJS.renderAbc(div, t.abc, {
+      add_classes: true,
+      responsive: 'resize',
+      foregroundColor: '#efe6d6',
+      paddingtop: 6, paddingbottom: 6, paddingleft: 4, paddingright: 4,
+      staffwidth: Math.max(300, Math.min(1040, div.clientWidth - 12)),
+      wrap: { minSpacing: 1.6, maxSpacing: 2.8, preferredMeasuresPerLine: renderedPerLine },
+      clickListener(abcElem) {
+        const ev = t.events.find(e => overlaps(abcElem, e));
+        if (ev) player.play(allEvents.indexOf(ev));
+      },
+    });
+    // Attach each note's SVG elements to its event by source position.
+    const sorted = t.events;
+    for (const line of visual.lines) for (const staff of line.staff || []) for (const voice of staff.voices) for (const el of voice) {
+      if (el.el_type !== 'note' || !el.abselem) continue;
+      const ev = sorted.find(e => overlaps(el, e));
+      if (ev) ev.els.push(...el.abselem.elemset);
+    }
+    allEvents.push(...t.events);
+  });
+  player.load(allEvents, measureCount);
+}
+
+$('dash').value = NK.store.get('dash', 'hold');
+$('dash').addEventListener('change', () => { NK.store.set('dash', $('dash').value); if (song) showSong(song); });
+let resizeTimer = 0;
+addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (song && perLine() !== renderedPerLine && !player.playing) showSong(song); }, 250);
+});
+
+NK.initControls();
+NK.initShell({ onSong: showSong });
+</script>
+</body>
+</html>
