@@ -1,0 +1,25 @@
+; Engine configuration file.
+; Godot 4.3+ · PC VR through OpenXR (SteamVR), with a desktop fallback when no headset is found.
+
+config_version=5
+
+[application]
+
+config/name="เมืองที่สร้างจากเสียง VR (ต้นแบบ Godot)"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+
+[display]
+
+window/vsync/vsync_mode=0
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2
+
+[xr]
+
+openxr/enabled=true
+openxr/reference_space=1
+openxr/startup_alert=false
+shaders/enabled=true
