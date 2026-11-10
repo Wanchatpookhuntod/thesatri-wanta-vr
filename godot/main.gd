@@ -197,7 +197,7 @@ func _build_world() -> void:
 	title.pixel_size = 0.004
 	title.modulate = Color(1.0, 0.86, 0.55)
 	title.outline_size = 0
-	title.position = Vector3(0, 2.4, -4.5)
+	title.position = Vector3(0, 1.65, -5.0)
 	add_child(title)
 
 
@@ -307,11 +307,11 @@ func _build_label() -> void:
 	label = Label3D.new()
 	label.font = font
 	label.font_size = 64
-	label.pixel_size = 0.0016
+	label.pixel_size = 0.0009
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.modulate = Color(1, 0.95, 0.8, 0)
 	label.outline_modulate = Color(0.3, 0.15, 0.0, 0)
-	label.position = Vector3(-0.86, 0.14, 0.02)  # beside the ranat, out of the lanes
+	label.position = Vector3(-0.85, 0.26, 0.02)  # above the ranat's left end, out of the lanes
 	ranat.add_child(label)
 
 
@@ -531,7 +531,7 @@ func _add_guide(key: int, t: float, vel: float) -> void:
 	sm.radius = 0.022
 	sm.height = 0.044
 	g.orb.mesh = sm
-	g.mat = _glow_mat(GUIDE_COLORS[key % 7], 2.5, true)
+	g.mat = _glow_mat(GUIDE_COLORS[key % 7], 1.3, true)  # bright enough to bloom, not so bright it washes to white
 	g.orb.material_override = g.mat
 	g.orb.visible = false
 	ranat.add_child(g.orb)
@@ -602,14 +602,14 @@ func _hit_fx(i: int, perfect: bool) -> void:
 	tm.outer_radius = 0.03
 	ring.mesh = tm
 	var rf := Fx.new()
-	rf.mat = _glow_mat(GUIDE_COLORS[i % 7], 2.0, true)
+	rf.mat = _glow_mat(GUIDE_COLORS[i % 7], 1.2, true)
 	ring.material_override = rf.mat
 	add_child(ring)
 	ring.global_position = top
 	rf.node = ring
 	rf.t0 = now_s()
 	rf.dur = 0.3
-	rf.grow = 5.0 if perfect else 3.8
+	rf.grow = 3.6 if perfect else 2.8
 	fxs.append(rf)
 	var flame := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -617,7 +617,7 @@ func _hit_fx(i: int, perfect: bool) -> void:
 	sm.height = sm.radius * 2
 	flame.mesh = sm
 	var ff := Fx.new()
-	ff.mat = _glow_mat(Color(1, 0.96, 0.86), 2.0, true)
+	ff.mat = _glow_mat(Color(1, 0.96, 0.86), 1.4, true)
 	flame.material_override = ff.mat
 	add_child(flame)
 	flame.global_position = top
