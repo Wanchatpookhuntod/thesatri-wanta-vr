@@ -66,16 +66,27 @@ python -m http.server 8765
 ```
 เปิด http://localhost:8765 ใน Chrome/Edge (เข้า VR ได้จาก localhost)
 
-## แว่น HP Reverb (G1, VR1000-2xxx) บน Windows 11 24H2+
-- WMR ถูกถอดออกจาก Windows แล้ว → ใช้ Oasis Driver (Steam) + SteamVR (ตั้งเป็น OpenXR runtime)
-- ค้างอยู่: unlock tool ขึ้น "Unexpected error while opening MR USB device: 6" และ
-  "can't find the HDMI/DisplayPort connection"
-  - ปิด SteamVR / ถอน "Windows Mixed Reality for SteamVR" ก่อนรัน unlock
-  - HDMI ต้องเข้าการ์ด NVIDIA โดยตรง, USB 3.0, ถอดจออื่นชั่วคราว, รีสตาร์ท
-  - คอนโทรลเลอร์ต้องจับคู่ผ่านขั้นตอน unlock ของ Oasis (ไม่ใช่ Bluetooth ของ Windows)
+## แว่น HP Reverb (G1) บน Windows: สถานะล่าสุด (10 พ.ย. 2569)
+- ✅ Oasis + SteamVR ใช้ได้แล้ว: แว่นแสดงภาพ, SteamVR เห็นแว่นและคอนโทรลเลอร์ 2 ตัว (ตัวซ้ายแบตใกล้หมด)
+- ✅ เว็บตัวอย่าง https://immersive-web.github.io/webxr-samples/immersive-vr-session.html เข้า VR ใน Chrome 156 ได้
+- ❌ เว็บเรา (index.html) เข้า VR แล้วในแว่นขึ้น "Google Chrome 156 is not responding" (ยังไม่หาย)
+  - ที่ลองแก้แล้ว (push แล้ว): context xrCompatible + high-performance, precompile shader, ปุ่ม VR เองไม่ขอ WebXR Layers,
+    `?lite` (ความละเอียดครึ่งหนึ่ง), ตัววัด `VR … fps` บนจอคอมระหว่างอยู่ใน VR
+  - ยังไม่ได้ผลจากหน้าทดสอบ `xrtest.html` (three.js เปล่าๆ) ว่าค้างด้วยไหม: ถ้าค้าง = three.js กับเครื่องนี้, ถ้าไม่ค้าง = ฉากของเรา
+  - ข้อมูลที่ยังไม่ได้: ตัวเลข fps ระหว่างค้าง, Console (F12), รุ่นการ์ดจอ
+- ทางหลัก: **ต้นแบบ Godot** (ด้านล่าง) ต่อ SteamVR ผ่าน OpenXR โดยตรง ไม่ผ่าน Chrome
+
+## ต้นแบบ Godot (godot/)
+- Godot 4.3+ · เปิด `godot/project.godot` แล้วกด F5 · ไม่มีแว่น = โหมดหน้าจอ (คลิกลูก / คีย์ 1–0 q w e r)
+- มีแล้ว: ระนาด, ไม้ตี 2 มือ (ตรวจการตีแบบเดียวกับเว็บ + haptic), เสียงสังเคราะห์, เส้นแสงนำทาง 14 เส้น, ดวงแสงสีประจำวัน,
+  ครูเล่นโน้ตที่พลาด, คอมโบ (ครูจาง 55% → 20%), วงแหวน/เปลว/กระดิ่งตอนตีโดน, ป้ายไทย (ฟอนต์ Loma)
+- ทดสอบแล้วบน Linux โหมดหน้าจอ (headless + Xvfb): ไม่มี error, ตีอัตโนมัติได้คอมโบ 16 · **ยังไม่ได้ลองกับแว่นจริง**
+- ยังไม่มี: วิหาร 79 ชิ้น, ฉากรุ่งอรุณ/เมือง/หญ้า/ต้นไม้, เลือกเพลง, โหมดชมการบรรเลง
+- ทดสอบอัตโนมัติ: ใส่ node สคริปต์ที่เรียก `main.strike(g.key, 1.1)` ตอน `absf(g.t - main.now_s()) < 0.03` (ดู commit eda7438)
 
 ## งานถัดไป
-- [x] ไม้ตีระนาดในมือ VR (ตีจริง + สั่น) — ยังไม่ได้ทดสอบบนแว่นจริง
+- [x] ไม้ตีระนาดในมือ VR (ตีจริง + สั่น) — ทดสอบใน Immersive Web Emulator แล้ว
+- [ ] **ลองต้นแบบ Godot กับแว่น Reverb** แล้วย้ายวิหาร/ฉากจบ/เพลงจากเว็บมา Godot
+- [x] ขึ้นโฮสต์ HTTPS: https://wanchatpookhuntod.github.io/thesatri-wanta-vr/ (GitHub Pages) · ยังไม่ได้ทำ QR
 - [ ] ใส่เสียง/โน้ตสาธุการจริง และโน้ตลาวกระทบไม้จริง
 - [ ] โลก "สายธารครู" (ข้อความร่วมกันของผู้ชม)
-- [ ] ขึ้นโฮสต์ HTTPS (เว็บมหาวิทยาลัย / GitHub Pages / Netlify) + ทำ QR
