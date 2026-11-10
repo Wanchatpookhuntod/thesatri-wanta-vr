@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ทดสอบ VR</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #eee; font: 15px system-ui, sans-serif; overflow: hidden; }
+  #info { position: fixed; top: 12px; left: 12px; right: 12px; line-height: 1.6; }
+  #stat { font: 600 18px monospace; color: #9f9; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="info">
+  <b>หน้าทดสอบ VR</b> · three.js 0.165 เวอร์ชันเดียวกับเว็บหลัก มีแค่กล่องหมุนกับพื้นตาราง<br>
+  กด ENTER VR แล้วในแว่นควรเห็นกล่องสีส้มหมุนอยู่ตรงหน้า · <span id="stat">ยังไม่ได้เข้า VR</span><br>
+  <span id="log"></span>
+</div>
+<script type="module">
+import * as THREE from 'three';
+
+// a bare scene: if this freezes in the headset too, the problem is three.js with this PC, not the hall
+const log = t => { document.getElementById('log').textContent = t; };
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x202030);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 100);
+camera.position.set(0, 1.6, 0);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 2));
+scene.add(new THREE.GridHelper(10, 20, 0x8888ff, 0x444466));
+const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xff8833 }));
+box.position.set(0, 1.4, -1);
+scene.add(box);
+
+// same button as the main page: no WebXR Layers
+const b = document.createElement('button');
+b.style.cssText = 'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:14px 22px;border:1px solid #fff;border-radius:4px;background:#000;color:#fff;font:15px sans-serif;cursor:pointer';
+document.body.appendChild(b);
+let current = null;
+if (!('xr' in navigator)) b.textContent = 'WEBXR NEEDED';
+else navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+  if (!ok) { b.textContent = 'VR NOT SUPPORTED'; return; }
+  b.textContent = 'ENTER VR';
+  b.onclick = async () => {
+    if (current) { current.end(); return; }
+    try {
+      const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+      s.addEventListener('end', () => { current = null; b.textContent = 'ENTER VR'; });
+      await renderer.xr.setSession(s);
+      current = s; b.textContent = 'EXIT VR';
+      log('เข้า VR แล้ว · framebuffer ' + s.renderState.baseLayer.framebufferWidth + '×' + s.renderState.baseLayer.framebufferHeight);
+    } catch (e) { b.textContent = 'VR ERROR'; log('ERROR: ' + (e && e.message || e)); }
+  };
+});
+
+let n = 0, t0 = 0, worst = 0, last = 0;
+renderer.setAnimationLoop(t => {
+  box.rotation.x += 0.01; box.rotation.y += 0.013;
+  if (renderer.xr.isPresenting) {
+    if (!n) { t0 = t; worst = 0; } else worst = Math.max(worst, t - last);
+    last = t; n++;
+    if (t - t0 >= 1000) { document.getElementById('stat').textContent = `VR ${Math.round(n * 1000 / (t - t0))} fps · ช้าสุด ${Math.round(worst)} ms`; n = 0; }
+  }
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
