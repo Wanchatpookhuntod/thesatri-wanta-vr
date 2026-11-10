@@ -1458,7 +1458,8 @@ document.getElementById('muteBtn').addEventListener('click', e => {
   e.currentTarget.textContent = muted ? '🔇 ปิดเสียง' : '🔊 เสียง';
 });
 renderer.xr.addEventListener('sessionstart', start);
-if (navigator.xr) navigator.xr.isSessionSupported('immersive-vr').then(ok => { if (ok) document.body.appendChild(VRButton.createButton(renderer)); });
+// always show the button: when VR can't start it says why (VR NOT SUPPORTED, or VR NOT ALLOWED off HTTPS/localhost)
+document.body.appendChild(VRButton.createButton(renderer));
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
