@@ -119,7 +119,6 @@
 
 <script type="module">
 import * as THREE from 'three';
-import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -1480,8 +1479,35 @@ document.getElementById('muteBtn').addEventListener('click', e => {
   e.currentTarget.textContent = muted ? '🔇 ปิดเสียง' : '🔊 เสียง';
 });
 renderer.xr.addEventListener('sessionstart', start);
-// always show the button: when VR can't start it says why (VR NOT SUPPORTED, or VR NOT ALLOWED off HTTPS/localhost)
-document.body.appendChild(VRButton.createButton(renderer));
+// Our own ENTER VR button instead of three's VRButton, which also asks for WebXR Layers. With layers three
+// renders through an XR projection layer, and Chrome on Windows with SteamVR can then stop delivering frames
+// ("Google Chrome is not responding" in the headset) while the WebXR samples, which ask for no layers, work.
+// The button is always shown, and says why when VR can't start.
+function makeVRButton() {
+  const b = document.createElement('button');
+  b.id = 'VRButton';
+  b.style.cssText = 'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:999;padding:12px 18px;' +
+    'border:1px solid #fff;border-radius:4px;background:rgba(0,0,0,.35);color:#fff;font:13px sans-serif;cursor:pointer;opacity:.75';
+  const say = text => { b.textContent = text; };
+  if (!('xr' in navigator)) { say(window.isSecureContext ? 'WEBXR NEEDED' : 'VR NOT ALLOWED'); b.disabled = true; return b; }
+  say('…');
+  let current = null;
+  navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+    if (!ok) { say('VR NOT SUPPORTED'); b.disabled = true; return; }
+    say('ENTER VR');
+    b.onclick = async () => {
+      if (current) { current.end(); return; }
+      try {
+        const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+        session.addEventListener('end', () => { current = null; say('ENTER VR'); });
+        await renderer.xr.setSession(session);
+        current = session; say('EXIT VR');
+      } catch (err) { console.error('ENTER VR failed:', err); say('VR ERROR: ' + (err && err.message || err)); }
+    };
+  }).catch(() => { say('VR NOT SUPPORTED'); b.disabled = true; });
+  return b;
+}
+document.body.appendChild(makeVRButton());
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
