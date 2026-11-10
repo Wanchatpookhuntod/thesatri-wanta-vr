@@ -133,7 +133,12 @@ const smooth = t => t * t * (3 - 2 * t);
 /* =====================================================================
    Renderer / scene
    ===================================================================== */
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// The WebGL context is made XR-compatible from the start, on the high-performance GPU, as the WebXR samples do.
+// Otherwise three asks for it only on ENTER VR, and on PCs with two GPUs Chrome may move the context to the
+// headset's GPU mid-session; frames then stop reaching SteamVR ("Google Chrome is not responding").
+const glCanvas = document.createElement('canvas');
+const glContext = glCanvas.getContext('webgl2', { antialias: true, xrCompatible: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, context: glContext, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1472,6 +1477,15 @@ dispatchEvent(new Event('resize'));
 /* =====================================================================
    Frame loop
    ===================================================================== */
+// Compile every shader now, hidden objects included (the hall's pieces, the dawn city, grass, trees), so none
+// compiles mid-VR when it first appears: a stall there makes SteamVR report the browser as not responding
+{
+  const hidden = [];
+  scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+  renderer.compile(scene, camera);
+  hidden.forEach(o => { o.visible = false; });
+}
+
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   dt = Math.min(0.05, clock.getDelta()); now = clock.elapsedTime;
