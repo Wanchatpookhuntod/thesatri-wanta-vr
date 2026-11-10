@@ -137,13 +137,16 @@ const smooth = t => t * t * (3 - 2 * t);
 // Otherwise three asks for it only on ENTER VR, and on PCs with two GPUs Chrome may move the context to the
 // headset's GPU mid-session; frames then stop reaching SteamVR ("Google Chrome is not responding").
 const glCanvas = document.createElement('canvas');
-const glContext = glCanvas.getContext('webgl2', { antialias: true, xrCompatible: true, powerPreference: 'high-performance' });
-const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, context: glContext, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// ?lite: a much lighter render for slow GPUs (no antialiasing, half-resolution VR, no dust or stars)
+const LITE = new URLSearchParams(location.search).has('lite');
+const glContext = glCanvas.getContext('webgl2', { antialias: !LITE, xrCompatible: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, context: glContext, antialias: !LITE, powerPreference: 'high-performance' });
+renderer.setPixelRatio(LITE ? 1 : Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.xr.enabled = true;
+if (LITE) { renderer.xr.setFramebufferScaleFactor(0.5); renderer.xr.setFoveation(1); }
 document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -339,6 +342,7 @@ const dust = makePoints(900, () => {
   return new V3(Math.cos(a) * r, -1 + Math.random() * 22, Math.sin(a) * r);
 }, 0.16, 0xffc46e, 0.75);
 scene.add(dust);
+if (LITE) stars.visible = dust.visible = false;
 
 const mirror = new THREE.Mesh(new THREE.CircleGeometry(160, 64),
   new THREE.MeshStandardMaterial({ color: 0x050308, roughness: 0.12, metalness: 0.9 }));
@@ -1413,7 +1417,7 @@ function updateMallets() {
 const RANAT_SCREEN = new V3(0, 0.85, -1.45), RANAT_VR = new V3(0, 0.9, -0.5);
 const ranatBase = RANAT_SCREEN.clone();
 renderer.xr.addEventListener('sessionstart', () => { ranatBase.copy(RANAT_VR); mallets.forEach(h => { h.ready = false; }); });
-renderer.xr.addEventListener('sessionend', () => { ranatBase.copy(RANAT_SCREEN); });
+renderer.xr.addEventListener('sessionend', () => { ranatBase.copy(RANAT_SCREEN); updateHud(); });
 
 /* =====================================================================
    Start / HUD
@@ -1433,7 +1437,20 @@ for (const [id, sg] of Object.entries(SONGS)) {
   songPick.appendChild(b);
 }
 const STATE_TEXT = { idle: '', void: 'ความว่างเปล่า… เสียงกำลังมา', build: 'เสียงกำลังก่อร่างวิหาร', complete: 'วิหารแห่งเสียงสมบูรณ์', dissolve: 'เสียงจางหาย วิหารคืนสู่แสง' };
+// while in VR the desktop page is otherwise blank: show how fast frames are going, to diagnose a stalled headset
+const xrStat = { n: 0, t0: 0, worst: 0, last: 0 };
+function updateXrStat(t) {
+  if (!renderer.xr.isPresenting) { xrStat.n = 0; return; }
+  if (!xrStat.n) { xrStat.t0 = t; xrStat.worst = 0; }
+  else xrStat.worst = Math.max(xrStat.worst, t - xrStat.last);
+  xrStat.last = t; xrStat.n++;
+  if (t - xrStat.t0 >= 1000) {
+    hudState.textContent = `VR ${Math.round(xrStat.n * 1000 / (t - xrStat.t0))} fps · ช้าสุด ${Math.round(xrStat.worst)} ms${LITE ? ' · lite' : ''}`;
+    xrStat.n = 0;
+  }
+}
 function updateHud() {
+  if (renderer.xr.isPresenting) return; // in VR the desktop HUD shows the frame-rate readout instead
   hudState.textContent = state === 'build' ? `${mode === 'guide' ? 'บรรเลงตามโน้ต' : STATE_TEXT.build} · ${builtCount}/${N}${mode === 'guide' && combo >= 3 ? ` · คอมโบ ${combo}` : ''}` : STATE_TEXT[state];
   hudBar.style.width = `${(state === 'complete' ? 1 : state === 'dissolve' || state === 'void' ? 0 : builtCount / N) * 100}%`;
 }
@@ -1487,7 +1504,8 @@ dispatchEvent(new Event('resize'));
 }
 
 const clock = new THREE.Clock();
-renderer.setAnimationLoop(() => {
+renderer.setAnimationLoop(t => {
+  updateXrStat(t);
   dt = Math.min(0.05, clock.getDelta()); now = clock.elapsedTime;
   if (ac) while (events.length && events[0].t <= ac.currentTime) fire(events.shift());
   stepState();
